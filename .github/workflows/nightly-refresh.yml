@@ -1,0 +1,40 @@
+name: Nightly P&L Refresh
+
+on:
+  # Runs at 02:00 Brussels time (01:00 UTC in winter, 00:00 UTC in summer)
+  schedule:
+    - cron: '0 1 * * *'
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    name: Refresh mock P&L data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env.local from secrets
+        run: |
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.local
+          echo "SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}" >> .env.local
+
+      - name: Run nightly refresh
+        run: npx tsx scripts/refresh.ts
+
+      - name: Clean up env file
+        if: always()
+        run: rm -f .env.local
