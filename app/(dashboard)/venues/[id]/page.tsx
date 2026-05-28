@@ -1,51 +1,74 @@
-import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/layout/top-bar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { KpiCard } from '@/components/ui/kpi-card'
-import { RevenueTrend } from '@/components/charts/revenue-trend'
 import { PlStatement } from '@/components/pl/pl-statement'
-import { derivePl, formatCurrency, MONTH_NAMES, monthLabel, sumSnapshots } from '@/lib/utils'
-import { PlSnapshot } from '@/lib/types'
+import { derivePl, formatCurrency, sumSnapshots, monthLabel, MONTH_NAMES } from '@/lib/utils'
+import { PlSnapshot, PlFull, Venue } from '@/lib/types'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 
-export const dynamic = 'force-dynamic'
+export default function VenueDetailPage() {
+  const { id } = useParams<{ id: string }>()
 
-export default async function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const supabase = await createClient()
+  const [venue,    setVenue]    = useState<(Venue & { company?: { id: string; display_name: string } }) | null>(null)
+  const [timeline, setTimeline] = useState<PlFull[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState<string | null>(null)
 
-  const { data: venue } = await supabase
-    .from('venues')
-    .select('*, company:companies(id, display_name, vat_number)')
-    .eq('id', id)
-    .single()
+  useEffect(() => {
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('venues').select('*, company:companies(id, display_name)').eq('id', id).single(),
+      supabase.from('pl_snapshots').select('*').eq('venue_id', id)
+        .order('period_year', { ascending: true })
+        .order('period_month', { ascending: true }),
+    ]).then(([{ data: v, error: e1 }, { data: snaps, error: e2 }]) => {
+      if (e1 || e2) { setError((e1 ?? e2)!.message); setLoading(false); return }
+      setVenue(v as Venue & { company?: { id: string; display_name: string } })
+      setTimeline(((snaps ?? []) as PlSnapshot[]).map(derivePl))
+      setLoading(false)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
-  if (!venue) notFound()
-
-  const { data: snapshots } = await supabase
-    .from('pl_snapshots')
-    .select('*')
-    .eq('venue_id', id)
-    .order('period_year', { ascending: true })
-    .order('period_month', { ascending: true })
-
-  const rows = (snapshots ?? []) as PlSnapshot[]
-  const derived = rows.map(derivePl)
-  const latest  = derived[derived.length - 1]
-  const prevOne = derived[derived.length - 2]
-
+  const latest   = timeline[timeline.length - 1] ?? null
+  const prevOne  = timeline[timeline.length - 2] ?? null
   const prevYear = latest
-    ? derived.find(d => d.period_year === latest.period_year - 1 && d.period_month === latest.period_month)
+    ? timeline.find(d => d.period_year === latest.period_year - 1 && d.period_month === latest.period_month) ?? null
     : null
-
   const ytdRows = latest
-    ? derived.filter(d => d.period_year === latest.period_year && d.period_month <= latest.period_month)
+    ? timeline.filter(d => d.period_year === latest.period_year && d.period_month <= latest.period_month)
     : []
   const ytd = ytdRows.length > 0 ? derivePl(sumSnapshots(ytdRows)) : null
 
-  const isHotel = venue.type === 'hotel'
+  const isHotel = venue?.type === 'hotel'
+
+  if (loading) {
+    return (
+      <div className="flex flex-col flex-1">
+        <TopBar title="Laden…" subtitle="" />
+        <div className="p-6">
+          <Card>
+            <CardContent className="py-16 text-center text-text-muted text-sm animate-pulse">Laden…</CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (!venue) {
+    return (
+      <div className="flex flex-col flex-1">
+        <TopBar title="Niet gevonden" subtitle="" />
+        <div className="p-6 text-text-muted text-sm">{error ?? 'Venue niet gevonden.'}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col flex-1">
@@ -63,6 +86,8 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ id
       </TopBar>
 
       <div className="p-6 flex flex-col gap-6">
+        {error && <p className="text-sm text-danger">{error}</p>}
+
         {latest ? (
           <>
             {/* KPIs */}
@@ -88,24 +113,16 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ id
               <KpiCard label="EBITDA-marge" value={latest.ebitda_margin_pct} isPercent />
             </div>
 
-            {/* Trend */}
-            <Card>
-              <CardHeader><CardTitle>Omzet & EBITDA — trend</CardTitle></CardHeader>
-              <CardContent>
-                <RevenueTrend snapshots={derived} />
-              </CardContent>
-            </Card>
-
-            {/* Full USALI P&L */}
+            {/* Full USALI P&L — primary content */}
             <Card>
               <CardHeader>
                 <CardTitle>
                   P&L — {monthLabel(latest.period_year, latest.period_month)}
-                  {prevYear && (
-                    <span className="ml-2 text-xs font-normal text-text-muted">
-                      vs {monthLabel(prevYear.period_year, prevYear.period_month)} · YTD {latest.period_year}
-                    </span>
-                  )}
+                  <span className="ml-2 text-xs font-normal text-text-muted">
+                    {prevOne && <>vs {monthLabel(prevOne.period_year, prevOne.period_month)} · </>}
+                    {prevYear && <>vs {monthLabel(prevYear.period_year, prevYear.period_month)} · </>}
+                    YTD {latest.period_year}
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0 pb-4">
@@ -135,8 +152,8 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ id
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {[...derived].reverse().map(row => (
-                        <tr key={row.id} className="hover:bg-surface-raised">
+                      {[...timeline].reverse().map(row => (
+                        <tr key={`${row.period_year}-${row.period_month}`} className="hover:bg-surface-raised">
                           <td className="px-5 py-3 text-text-muted text-xs">
                             {MONTH_NAMES[row.period_month - 1]} {row.period_year}
                           </td>
