@@ -438,10 +438,10 @@ async function seed() {
 
   const venueMap = new Map(venueResult.map(v => [`${v.company_id}::${v.name}`, v.id]))
 
-  // 3. Generate P&L snapshots Jan 2024 – May 2025
+  // 3. Generate P&L snapshots Jan 2024 – May 2026
   const months: Array<{ year: number; month: number }> = []
-  for (let y = 2024; y <= 2025; y++) {
-    const maxMonth = y === 2025 ? 5 : 12
+  for (let y = 2024; y <= 2026; y++) {
+    const maxMonth = y === 2026 ? 5 : 12
     for (let m = 1; m <= maxMonth; m++) months.push({ year: y, month: m })
   }
 

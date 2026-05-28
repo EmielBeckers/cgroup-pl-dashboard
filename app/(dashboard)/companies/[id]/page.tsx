@@ -7,11 +7,27 @@ import { Badge } from '@/components/ui/badge'
 import { RevenueTrend } from '@/components/charts/revenue-trend'
 import { PlStatement } from '@/components/pl/pl-statement'
 import { derivePl, formatCurrency, sumSnapshots, monthLabel } from '@/lib/utils'
-import { PlSnapshot, Venue } from '@/lib/types'
+import { PlSnapshot, PlFull, Venue } from '@/lib/types'
 import Link from 'next/link'
 import { MapPin } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
+
+// Group venue-level snapshots by period and aggregate each into a single company-level PlFull
+function buildTimeline(rows: PlSnapshot[]): PlFull[] {
+  const byPeriod = new Map<string, PlSnapshot[]>()
+  for (const r of rows) {
+    const key = `${r.period_year}-${r.period_month}`
+    const group = byPeriod.get(key) ?? []
+    group.push(r)
+    byPeriod.set(key, group)
+  }
+  return Array.from(byPeriod.values())
+    .map(group => derivePl(group.length === 1 ? group[0] : sumSnapshots(group)))
+    .sort((a, b) => a.period_year !== b.period_year
+      ? a.period_year - b.period_year
+      : a.period_month - b.period_month)
+}
 
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,17 +43,18 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     .eq('is_active', true)
     .order('name')
 
-  // All company-level snapshots (no venue_id)
+  // Fetch all venue-level snapshots for this company
   const { data: snapshots } = await supabase
     .from('pl_snapshots')
     .select('*')
     .eq('company_id', id)
-    .is('venue_id', null)
+    .not('venue_id', 'is', null)
     .order('period_year', { ascending: true })
     .order('period_month', { ascending: true })
 
   const rows = (snapshots ?? []) as PlSnapshot[]
-  const derived = rows.map(derivePl)
+  const derived = buildTimeline(rows)
+
   const latest  = derived[derived.length - 1]
   const prevOne = derived[derived.length - 2]
 
@@ -45,7 +62,6 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     ? derived.find(d => d.period_year === latest.period_year - 1 && d.period_month === latest.period_month)
     : null
 
-  // YTD: all snapshots in the current year up to and including the latest month
   const ytdRows = latest
     ? derived.filter(d => d.period_year === latest.period_year && d.period_month <= latest.period_month)
     : []
@@ -84,11 +100,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                 isCurrency compact
                 vsLastMonth={prevOne ? latest.ebitda - prevOne.ebitda : undefined}
               />
-              <KpiCard
-                label="EBITDA-marge"
-                value={latest.ebitda_margin_pct}
-                isPercent
-              />
+              <KpiCard label="EBITDA-marge" value={latest.ebitda_margin_pct} isPercent />
             </div>
 
             {/* Trend */}
@@ -124,13 +136,13 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               </CardContent>
             </Card>
 
-            {/* Revenue trend detail */}
+            {/* YTD summary strip */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               {[
-                { label: 'Omzet YTD', value: formatCurrency(ytd?.total_operating_revenue ?? 0, true) },
-                { label: 'EBITDA YTD', value: formatCurrency(ytd?.ebitda ?? 0, true) },
+                { label: 'Omzet YTD',    value: formatCurrency(ytd?.total_operating_revenue ?? 0, true) },
+                { label: 'EBITDA YTD',   value: formatCurrency(ytd?.ebitda ?? 0, true) },
                 { label: 'Netto-inkomen', value: formatCurrency(latest.net_income, true) },
-                { label: 'Nettomarge', value: `${latest.net_margin_pct.toFixed(1)}%` },
+                { label: 'Nettomarge',   value: `${latest.net_margin_pct.toFixed(1)}%` },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-surface rounded-lg px-4 py-3 flex justify-between items-center">
                   <span className="text-text-muted text-xs">{label}</span>
