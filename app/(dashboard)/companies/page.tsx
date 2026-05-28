@@ -55,7 +55,7 @@ export default async function CompaniesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-xs text-text-muted">Omzet</p>
-                      <p className="text-sm font-semibold text-text">{formatCurrency(pl.total_revenue, true)}</p>
+                      <p className="text-sm font-semibold text-text">{formatCurrency(pl.total_operating_revenue, true)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-text-muted">EBITDA</p>

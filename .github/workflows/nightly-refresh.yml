@@ -31,6 +31,8 @@ jobs:
         run: |
           echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.local
           echo "SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}" >> .env.local
+          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_SITE_URL=${{ secrets.SITE_URL }}" >> .env.local
 
       - name: Run nightly refresh
         run: npx tsx scripts/refresh.ts

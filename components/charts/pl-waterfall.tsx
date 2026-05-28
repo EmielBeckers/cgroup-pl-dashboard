@@ -1,19 +1,20 @@
 'use client'
 
-import { PlDerived } from '@/lib/types'
+import { PlFull } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
-interface Props { snapshot: PlDerived }
+interface Props { snapshot: PlFull }
 
 export function PlWaterfall({ snapshot: s }: Props) {
   const items = [
-    { label: 'Omzet', value: s.total_revenue, color: '#b8962e' },
-    { label: 'Inkoopkosten', value: -s.total_cogs, color: '#ef4444' },
-    { label: 'Brutowinst', value: s.gross_profit, color: '#d4af54' },
-    { label: 'Personeel', value: -s.total_labour, color: '#ef4444' },
-    { label: 'Overheadkosten', value: -s.total_overhead, color: '#f59e0b' },
-    { label: 'EBITDA', value: s.ebitda, color: s.ebitda >= 0 ? '#22c55e' : '#ef4444' },
+    { label: 'Omzet',          value: s.total_operating_revenue,          color: '#b8962e' },
+    { label: 'Inkoopkosten',   value: -s.total_cogs,                       color: '#ef4444' },
+    { label: 'Brutowinst',     value: s.gross_profit,                      color: '#d4af54' },
+    { label: 'Personeel',      value: -s.total_labour,                     color: '#ef4444' },
+    { label: 'Andere kosten',  value: -s.total_other_expenses,             color: '#f59e0b' },
+    { label: 'GOP',            value: s.gop,                               color: '#7a6220' },
+    { label: 'EBITDA',         value: s.ebitda, color: s.ebitda >= 0 ? '#22c55e' : '#ef4444' },
   ]
 
   return (

@@ -15,27 +15,34 @@ Part of C.Group's internal tooling. See the master context file at `/Users/emiel
 
 ```
 app/
-  (dashboard)/          ← All authenticated pages share this layout
-    dashboard/          ← Main overview (all companies, current month)
-    companies/          ← Company list + [id] detail page
-    venues/             ← Venue list + [id] detail page
-    invoices/           ← Invoice list + [id] detail page
-  login/                ← Public login page
+  (dashboard)/              ← All authenticated pages share this layout
+    dashboard/              ← Main overview (all companies, current month)
+    companies/              ← Company list + [id] detail page (full USALI P&L)
+    venues/                 ← Venue list + [id] detail page (full USALI P&L)
+    invoices/               ← Invoice list
+      review/               ← AI review queue (accounting/board only)
+  api/
+    categorize-invoices/    ← POST endpoint: calls Claude Haiku to categorise pending_ai invoices
+  login/                    ← Public login page
 components/
-  ui/                   ← card, badge, button, kpi-card
-  layout/               ← sidebar, top-bar
-  charts/               ← revenue-trend (AreaChart), pl-waterfall (BarChart)
+  ui/                       ← card, badge, button, kpi-card
+  layout/                   ← sidebar (with entity list), top-bar
+  charts/                   ← revenue-trend (AreaChart), pl-waterfall (BarChart)
+  pl/
+    pl-statement.tsx        ← Full USALI P&L table component (client, collapse/expand)
 lib/
-  supabase/client.ts    ← Browser client (client components)
-  supabase/server.ts    ← Server client (server components + middleware)
-  types.ts              ← All TypeScript interfaces
-  utils.ts              ← cn(), formatCurrency(), derivePl(), monthLabel()
-middleware.ts           ← Auth guard: redirect to /login if not signed in
+  supabase/client.ts        ← Browser client (client components)
+  supabase/server.ts        ← Server client (server components + middleware)
+  types.ts                  ← All TypeScript interfaces
+  utils.ts                  ← cn(), formatCurrency(), derivePl(), sumSnapshots(), monthLabel()
+  pl-structure.ts           ← PL_ROWS definition, USALI_EXPENSE_CATEGORIES, USALI_TO_COLUMN
+proxy.ts                    ← Auth guard: redirect to /login if not signed in
 scripts/
-  seed.ts               ← One-time mock data loader (npm run seed)
-  refresh.ts            ← Nightly job (npm run refresh / GitHub Actions)
+  seed.ts                   ← One-time mock data loader (npm run seed)
+  refresh.ts                ← Nightly job (npm run refresh / GitHub Actions)
 supabase/
-  schema.sql            ← Run this once in Supabase SQL editor to create tables
+  schema.sql                ← Run this once in Supabase SQL editor to create tables
+  migration_v2.sql          ← Run AFTER schema.sql to add USALI columns + AI invoice fields
 ```
 
 ## Setup steps (do these once)
@@ -104,6 +111,22 @@ This is our best estimate based on company names. **Confirm with Emiel and updat
 | Blue Ocean Hospitality | C.BAR, BAR BOUFFE JESSA, BAR BOUFFE ZOL, BAR BOUFFE ST-BARBARA, BAR BOUFFE ZMK, BAR BOUFFE TRUDO, THE ALLEY'S |
 | C. Outdoor | PLAGE ODETTE |
 | C.Group, C. Construx, R&R FIN, Customizze | No F&B venues (holding/support entities) |
+
+## AI invoice categorisation
+
+- Model: `claude-haiku-4-5-20251001`
+- New invoices are seeded with `review_status = 'pending_ai'`
+- `POST /api/categorize-invoices` processes them in batches of 10
+- Confidence ≥ 90%: auto-confirmed (`review_status = 'auto_confirmed'`)
+- Confidence < 90%: goes to accounting queue (`review_status = 'pending_review'`)
+- Accounting/board can accept or correct at `/invoices/review`
+- Nightly refresh calls the endpoint automatically if `ANTHROPIC_API_KEY` is set
+- Required secrets for GitHub Actions: `ANTHROPIC_API_KEY`, `SITE_URL`
+
+## Database migrations
+
+1. Run `supabase/schema.sql` first (creates all tables)
+2. Run `supabase/migration_v2.sql` to add USALI columns and AI invoice fields
 
 ## When Adsolut API goes live
 

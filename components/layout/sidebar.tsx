@@ -4,22 +4,28 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Building2, MapPin, FileText, LogOut,
+  LayoutDashboard, Building2, MapPin, FileText, LogOut, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { UserProfile } from '@/lib/types'
+import { Company, UserProfile } from '@/lib/types'
+import { useState } from 'react'
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/companies', label: 'Entiteiten', icon: Building2 },
   { href: '/venues',    label: 'Venues',     icon: MapPin },
   { href: '/invoices',  label: 'Facturen',   icon: FileText },
 ]
 
-export function Sidebar({ profile }: { profile: UserProfile | null }) {
+interface SidebarProps {
+  profile: UserProfile | null
+  companies: Pick<Company, 'id' | 'display_name' | 'name'>[]
+}
+
+export function Sidebar({ profile, companies }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
+  const [entitiesOpen, setEntitiesOpen] = useState(true)
 
   async function signOut() {
     const supabase = createClient()
@@ -28,29 +34,65 @@ export function Sidebar({ profile }: { profile: UserProfile | null }) {
   }
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col bg-surface border-r border-border h-screen sticky top-0">
+    <aside className="w-56 shrink-0 flex flex-col bg-surface border-r border-border h-screen sticky top-0 overflow-y-auto">
       {/* Logo */}
-      <div className="px-5 py-6 border-b border-border">
-        <p className="text-xs text-text-muted uppercase tracking-widest">C.Group</p>
-        <p className="text-lg font-semibold text-gold leading-tight">P&L Dashboard</p>
+      <div className="px-5 py-5 border-b border-border shrink-0">
+        <p className="text-[10px] text-text-faint uppercase tracking-widest">C.Group</p>
+        <p className="text-base font-semibold text-gold leading-tight mt-0.5">P&L Dashboard</p>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
-        {NAV.map(({ href, label, icon: Icon }) => {
+      <nav className="flex-1 px-3 py-3 flex flex-col gap-0.5">
+        {/* Dashboard */}
+        {NAV.slice(0, 1).map(({ href, label, icon: Icon }) => {
+          const active = pathname === href
+          return (
+            <Link key={href} href={href} className={cn(
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+              active ? 'bg-gold/10 text-gold font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+            )}>
+              <Icon size={15} />
+              {label}
+            </Link>
+          )
+        })}
+
+        {/* Entities collapsible */}
+        <div className="mt-1">
+          <button
+            onClick={() => setEntitiesOpen(o => !o)}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-text-faint hover:text-text-muted transition-colors"
+          >
+            {entitiesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <Building2 size={13} />
+            <span className="text-[11px] uppercase tracking-widest font-semibold">Entiteiten</span>
+          </button>
+          {entitiesOpen && (
+            <div className="mt-0.5 flex flex-col gap-0">
+              {companies.map(c => {
+                const active = pathname === `/companies/${c.id}` || pathname.startsWith(`/companies/${c.id}/`)
+                return (
+                  <Link key={c.id} href={`/companies/${c.id}`} className={cn(
+                    'pl-8 pr-3 py-1.5 text-xs rounded-md transition-colors truncate',
+                    active ? 'text-gold bg-gold/10 font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+                  )}>
+                    {c.display_name}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Remaining nav items */}
+        {NAV.slice(1).map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                active
-                  ? 'bg-gold/10 text-gold font-medium'
-                  : 'text-text-muted hover:text-text hover:bg-surface-raised'
-              )}
-            >
-              <Icon size={16} />
+            <Link key={href} href={href} className={cn(
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors mt-1',
+              active ? 'bg-gold/10 text-gold font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+            )}>
+              <Icon size={15} />
               {label}
             </Link>
           )
@@ -58,7 +100,7 @@ export function Sidebar({ profile }: { profile: UserProfile | null }) {
       </nav>
 
       {/* User + sign out */}
-      <div className="px-4 py-4 border-t border-border">
+      <div className="px-4 py-4 border-t border-border shrink-0">
         {profile && (
           <p className="text-xs text-text-muted mb-3 truncate">
             {profile.full_name}

@@ -1,20 +1,20 @@
 'use client'
 
-import { PlDerived } from '@/lib/types'
+import { PlFull } from '@/lib/types'
 import { formatCurrency, MONTH_NAMES } from '@/lib/utils'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 
 interface Props {
-  snapshots: PlDerived[]
+  snapshots: PlFull[]
   showEbitda?: boolean
 }
 
 export function RevenueTrend({ snapshots, showEbitda = true }: Props) {
   const data = snapshots.map(s => ({
     label: `${MONTH_NAMES[s.period_month - 1]} ${String(s.period_year).slice(2)}`,
-    revenue: s.total_revenue,
+    revenue: s.total_operating_revenue,
     ebitda: s.ebitda,
   }))
 
