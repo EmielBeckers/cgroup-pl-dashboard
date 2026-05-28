@@ -38,14 +38,21 @@ export default async function DashboardPage() {
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear  = month === 1 ? year - 1 : year
 
+  // ── Diagnostics (visible in Vercel Function logs) ─────────────────────────
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  console.log('[dashboard] auth.uid:', user?.id ?? 'null', '| authErr:', authErr?.message ?? 'none')
+  console.log('[dashboard] querying period_year in', [year, prevYear], 'period_month in', [month, prevMonth])
+
   // Fetch venue-level rows for current + previous month (all companies)
-  const { data: snapshots } = await supabase
+  const { data: snapshots, error: snapErr, count } = await supabase
     .from('pl_snapshots')
-    .select('*, company:companies(id, name, display_name)')
+    .select('*, company:companies(id, name, display_name)', { count: 'exact' })
     .not('venue_id', 'is', null)
-    .in('period_year', Array.from(new Set([year, prevYear])))
-    .in('period_month', Array.from(new Set([month, prevMonth])))
+    .in('period_year', [year, prevYear])
+    .in('period_month', [month, prevMonth])
     .limit(500)
+
+  console.log('[dashboard] pl_snapshots rows returned:', count ?? snapshots?.length ?? 0, '| snapErr:', snapErr?.message ?? 'none')
 
   const rows = (snapshots ?? []) as SnapshotRow[]
 
