@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Building2, MapPin, FileText, LogOut, ChevronDown, ChevronRight,
+  LayoutDashboard, Building2, MapPin, FileText, Truck, LogOut, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -97,6 +97,20 @@ export function Sidebar({ profile, companies }: SidebarProps) {
             </Link>
           )
         })}
+
+        {/* Leveranciers — Board + Accounting only */}
+        {(profile?.role === 'board' || profile?.role === 'accounting') && (() => {
+          const active = pathname === '/leveranciers' || pathname.startsWith('/leveranciers/')
+          return (
+            <Link href="/leveranciers" className={cn(
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors mt-1',
+              active ? 'bg-gold/10 text-gold font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+            )}>
+              <Truck size={15} />
+              Leveranciers
+            </Link>
+          )
+        })()}
       </nav>
 
       {/* User + sign out */}
