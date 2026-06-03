@@ -7,18 +7,32 @@ import { TopBar } from '@/components/layout/top-bar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { PlStatement } from '@/components/pl/pl-statement'
-import { derivePl, formatCurrency, sumSnapshots, monthLabel, MONTH_NAMES } from '@/lib/utils'
+import { PeriodSelector } from '@/components/ui/period-selector'
+import {
+  PeriodState, CompState, DateRange,
+  latestPeriod, resolvePeriodRange, resolveCompRange, filterRows, rangeLabel,
+} from '@/lib/period'
+import { derivePl, formatCurrency, sumSnapshots, MONTH_NAMES } from '@/lib/utils'
 import { PlSnapshot, PlFull, Venue } from '@/lib/types'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 
+function deriveRange(rows: PlSnapshot[], range: DateRange): PlFull | null {
+  const inRange = filterRows(rows, range)
+  if (!inRange.length) return null
+  return derivePl(inRange.length === 1 ? inRange[0] : sumSnapshots(inRange))
+}
+
 export default function VenueDetailPage() {
   const { id } = useParams<{ id: string }>()
 
-  const [venue,    setVenue]    = useState<(Venue & { company?: { id: string; display_name: string } }) | null>(null)
-  const [timeline, setTimeline] = useState<PlFull[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState<string | null>(null)
+  const [venue,   setVenue]   = useState<(Venue & { company?: { id: string; display_name: string } }) | null>(null)
+  const [rows,    setRows]    = useState<PlSnapshot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
+
+  const [period, setPeriod] = useState<PeriodState>({ type: 'ytd' })
+  const [comp,   setComp]   = useState<CompState>({ type: 'vs_last_year' })
 
   useEffect(() => {
     const supabase = createClient()
@@ -30,23 +44,30 @@ export default function VenueDetailPage() {
     ]).then(([{ data: v, error: e1 }, { data: snaps, error: e2 }]) => {
       if (e1 || e2) { setError((e1 ?? e2)!.message); setLoading(false); return }
       setVenue(v as Venue & { company?: { id: string; display_name: string } })
-      setTimeline(((snaps ?? []) as PlSnapshot[]).map(derivePl))
+      setRows((snaps ?? []) as PlSnapshot[])
       setLoading(false)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  const latest   = timeline[timeline.length - 1] ?? null
-  const prevOne  = timeline[timeline.length - 2] ?? null
-  const prevYear = latest
-    ? timeline.find(d => d.period_year === latest.period_year - 1 && d.period_month === latest.period_month) ?? null
-    : null
-  const ytdRows = latest
-    ? timeline.filter(d => d.period_year === latest.period_year && d.period_month <= latest.period_month)
-    : []
-  const ytd = ytdRows.length > 0 ? derivePl(sumSnapshots(ytdRows)) : null
+  const latest        = latestPeriod(rows)
+  const primaryRange  = latest ? resolvePeriodRange(period, latest) : null
+  const compRange     = primaryRange ? resolveCompRange(comp, primaryRange) : null
+
+  const primary    = primaryRange ? deriveRange(rows, primaryRange) : null
+  const comparison = compRange    ? deriveRange(rows, compRange)    : null
+
+  const primaryLabel = primaryRange ? rangeLabel(primaryRange) : '—'
+  const compLabel    = compRange    ? rangeLabel(compRange)    : undefined
 
   const isHotel = venue?.type === 'hotel'
+
+  // Full timeline for history table
+  const timeline: PlFull[] = rows.map(derivePl).sort((a, b) =>
+    a.period_year !== b.period_year
+      ? a.period_year - b.period_year
+      : a.period_month - b.period_month
+  )
 
   if (loading) {
     return (
@@ -75,7 +96,6 @@ export default function VenueDetailPage() {
       <TopBar
         title={venue.name}
         subtitle={venue.company?.display_name ?? undefined}
-        period={latest ? { year: latest.period_year, month: latest.period_month } : undefined}
       >
         <Link
           href={`/companies/${venue.company_id}`}
@@ -88,49 +108,53 @@ export default function VenueDetailPage() {
       <div className="p-6 flex flex-col gap-6">
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        {latest ? (
+        {/* Period selector */}
+        {latest && (
+          <PeriodSelector
+            period={period}
+            comp={comp}
+            onChange={(p, c) => { setPeriod(p); setComp(c) }}
+          />
+        )}
+
+        {primary ? (
           <>
             {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard
                 label="Omzet"
-                value={latest.total_operating_revenue}
+                value={primary.total_operating_revenue}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.total_operating_revenue - prevOne.total_operating_revenue : undefined}
+                vsLastMonth={comparison
+                  ? primary.total_operating_revenue - comparison.total_operating_revenue
+                  : undefined}
               />
               <KpiCard
                 label="GOP"
-                value={latest.gop}
+                value={primary.gop}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.gop - prevOne.gop : undefined}
+                vsLastMonth={comparison ? primary.gop - comparison.gop : undefined}
               />
               <KpiCard
                 label="EBITDA"
-                value={latest.ebitda}
+                value={primary.ebitda}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.ebitda - prevOne.ebitda : undefined}
+                vsLastMonth={comparison ? primary.ebitda - comparison.ebitda : undefined}
               />
-              <KpiCard label="EBITDA-marge" value={latest.ebitda_margin_pct} isPercent />
+              <KpiCard label="EBITDA-marge" value={primary.ebitda_margin_pct} isPercent />
             </div>
 
-            {/* Full USALI P&L — primary content */}
+            {/* Full USALI P&L */}
             <Card>
               <CardHeader>
-                <CardTitle>
-                  P&L — {monthLabel(latest.period_year, latest.period_month)}
-                  <span className="ml-2 text-xs font-normal text-text-muted">
-                    {prevOne && <>vs {monthLabel(prevOne.period_year, prevOne.period_month)} · </>}
-                    {prevYear && <>vs {monthLabel(prevYear.period_year, prevYear.period_month)} · </>}
-                    YTD {latest.period_year}
-                  </span>
-                </CardTitle>
+                <CardTitle>P&L — {primaryLabel}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 pb-4">
                 <PlStatement
-                  current={latest}
-                  prevMonth={prevOne ?? null}
-                  prevYear={prevYear ?? null}
-                  ytd={ytd}
+                  primary={primary}
+                  primaryLabel={primaryLabel}
+                  comparison={comparison}
+                  comparisonLabel={compLabel}
                   isHotel={isHotel}
                 />
               </CardContent>
@@ -143,7 +167,7 @@ export default function VenueDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[500px]">
                     <thead>
-                      <tr className="border-b border-border text-text-muted text-xs uppercase tracking-wide">
+                      <tr className="border-b border-border text-text-faint text-xs uppercase tracking-wide bg-surface-raised/50">
                         <th className="text-left px-5 py-3">Maand</th>
                         <th className="text-right px-4 py-3">Omzet</th>
                         <th className="text-right px-4 py-3">Brutowinst</th>
@@ -153,7 +177,7 @@ export default function VenueDetailPage() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {[...timeline].reverse().map(row => (
-                        <tr key={`${row.period_year}-${row.period_month}`} className="hover:bg-surface-raised">
+                        <tr key={`${row.period_year}-${row.period_month}`} className="hover:bg-surface-raised transition-colors">
                           <td className="px-5 py-3 text-text-muted text-xs">
                             {MONTH_NAMES[row.period_month - 1]} {row.period_year}
                           </td>

@@ -8,24 +8,22 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { PlStatement } from '@/components/pl/pl-statement'
-import { derivePl, formatCurrency, sumSnapshots, monthLabel, MONTH_NAMES } from '@/lib/utils'
+import { PeriodSelector } from '@/components/ui/period-selector'
+import {
+  PeriodState, CompState, DateRange,
+  latestPeriod, resolvePeriodRange, resolveCompRange, filterRows, rangeLabel,
+} from '@/lib/period'
+import { derivePl, formatCurrency, sumSnapshots, MONTH_NAMES } from '@/lib/utils'
 import { PlSnapshot, PlFull, Venue, Company } from '@/lib/types'
 import Link from 'next/link'
 import { MapPin } from 'lucide-react'
 
-function buildTimeline(rows: PlSnapshot[]): PlFull[] {
-  const byPeriod = new Map<string, PlSnapshot[]>()
-  for (const r of rows) {
-    const key = `${r.period_year}-${r.period_month}`
-    const group = byPeriod.get(key) ?? []
-    group.push(r)
-    byPeriod.set(key, group)
-  }
-  return Array.from(byPeriod.values())
-    .map(group => derivePl(group.length === 1 ? group[0] : sumSnapshots(group)))
-    .sort((a, b) => a.period_year !== b.period_year
-      ? a.period_year - b.period_year
-      : a.period_month - b.period_month)
+type SnapshotRow = PlSnapshot
+
+function deriveRange(rows: SnapshotRow[], range: DateRange): PlFull | null {
+  const inRange = filterRows(rows, range)
+  if (!inRange.length) return null
+  return derivePl(inRange.length === 1 ? inRange[0] : sumSnapshots(inRange))
 }
 
 export default function CompanyDetailPage() {
@@ -33,9 +31,12 @@ export default function CompanyDetailPage() {
 
   const [company,  setCompany]  = useState<Company | null>(null)
   const [venues,   setVenues]   = useState<Venue[]>([])
-  const [timeline, setTimeline] = useState<PlFull[]>([])
+  const [rows,     setRows]     = useState<SnapshotRow[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
+
+  const [period, setPeriod] = useState<PeriodState>({ type: 'ytd' })
+  const [comp,   setComp]   = useState<CompState>({ type: 'vs_last_year' })
 
   useEffect(() => {
     const supabase = createClient()
@@ -47,21 +48,37 @@ export default function CompanyDetailPage() {
       if (e1 || e3) { setError((e1 ?? e3)!.message); setLoading(false); return }
       setCompany(comp as Company)
       setVenues((v ?? []) as Venue[])
-      setTimeline(buildTimeline((snaps ?? []) as PlSnapshot[]))
+      setRows((snaps ?? []) as SnapshotRow[])
       setLoading(false)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  const latest   = timeline[timeline.length - 1] ?? null
-  const prevOne  = timeline[timeline.length - 2] ?? null
-  const prevYear = latest
-    ? timeline.find(d => d.period_year === latest.period_year - 1 && d.period_month === latest.period_month) ?? null
-    : null
-  const ytdRows = latest
-    ? timeline.filter(d => d.period_year === latest.period_year && d.period_month <= latest.period_month)
-    : []
-  const ytd = ytdRows.length > 0 ? derivePl(sumSnapshots(ytdRows)) : null
+  const latest        = latestPeriod(rows)
+  const primaryRange  = latest ? resolvePeriodRange(period, latest) : null
+  const compRange     = primaryRange ? resolveCompRange(comp, primaryRange) : null
+
+  const primary    = primaryRange ? deriveRange(rows, primaryRange) : null
+  const comparison = compRange    ? deriveRange(rows, compRange)    : null
+
+  const primaryLabel = primaryRange ? rangeLabel(primaryRange) : '—'
+  const compLabel    = compRange    ? rangeLabel(compRange)    : undefined
+
+  // Monthly history (most recent 24 months, for the history table)
+  const timeline: PlFull[] = (() => {
+    const byPeriod = new Map<string, SnapshotRow[]>()
+    for (const r of rows) {
+      const key = `${r.period_year}-${r.period_month}`
+      const g = byPeriod.get(key) ?? []
+      g.push(r)
+      byPeriod.set(key, g)
+    }
+    return Array.from(byPeriod.values())
+      .map(g => derivePl(g.length === 1 ? g[0] : sumSnapshots(g)))
+      .sort((a, b) => a.period_year !== b.period_year
+        ? a.period_year - b.period_year
+        : a.period_month - b.period_month)
+  })()
 
   const isHotel = venues.some(v => v.type === 'hotel')
 
@@ -92,55 +109,58 @@ export default function CompanyDetailPage() {
       <TopBar
         title={company.display_name}
         subtitle={company.vat_number ?? undefined}
-        period={latest ? { year: latest.period_year, month: latest.period_month } : undefined}
       />
 
       <div className="p-6 flex flex-col gap-6">
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        {latest ? (
+        {/* Period selector */}
+        {latest && (
+          <PeriodSelector
+            period={period}
+            comp={comp}
+            onChange={(p, c) => { setPeriod(p); setComp(c) }}
+          />
+        )}
+
+        {primary ? (
           <>
             {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard
                 label="Omzet"
-                value={latest.total_operating_revenue}
+                value={primary.total_operating_revenue}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.total_operating_revenue - prevOne.total_operating_revenue : undefined}
+                vsLastMonth={comparison
+                  ? primary.total_operating_revenue - comparison.total_operating_revenue
+                  : undefined}
               />
               <KpiCard
                 label="GOP"
-                value={latest.gop}
+                value={primary.gop}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.gop - prevOne.gop : undefined}
+                vsLastMonth={comparison ? primary.gop - comparison.gop : undefined}
               />
               <KpiCard
                 label="EBITDA"
-                value={latest.ebitda}
+                value={primary.ebitda}
                 isCurrency compact
-                vsLastMonth={prevOne ? latest.ebitda - prevOne.ebitda : undefined}
+                vsLastMonth={comparison ? primary.ebitda - comparison.ebitda : undefined}
               />
-              <KpiCard label="EBITDA-marge" value={latest.ebitda_margin_pct} isPercent />
+              <KpiCard label="EBITDA-marge" value={primary.ebitda_margin_pct} isPercent />
             </div>
 
-            {/* Full USALI P&L — primary content */}
+            {/* Full USALI P&L */}
             <Card>
               <CardHeader>
-                <CardTitle>
-                  P&L — {monthLabel(latest.period_year, latest.period_month)}
-                  <span className="ml-2 text-xs font-normal text-text-muted">
-                    {prevOne && <>vs {monthLabel(prevOne.period_year, prevOne.period_month)} · </>}
-                    {prevYear && <>vs {monthLabel(prevYear.period_year, prevYear.period_month)} · </>}
-                    YTD {latest.period_year}
-                  </span>
-                </CardTitle>
+                <CardTitle>P&L — {primaryLabel}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 pb-4">
                 <PlStatement
-                  current={latest}
-                  prevMonth={prevOne ?? null}
-                  prevYear={prevYear ?? null}
-                  ytd={ytd}
+                  primary={primary}
+                  primaryLabel={primaryLabel}
+                  comparison={comparison}
+                  comparisonLabel={compLabel}
                   isHotel={isHotel}
                 />
               </CardContent>
@@ -149,12 +169,12 @@ export default function CompanyDetailPage() {
             {/* YTD summary strip */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               {[
-                { label: 'Omzet YTD',     value: formatCurrency(ytd?.total_operating_revenue ?? 0, true) },
-                { label: 'EBITDA YTD',    value: formatCurrency(ytd?.ebitda ?? 0, true) },
-                { label: 'Netto-inkomen', value: formatCurrency(latest.net_income, true) },
-                { label: 'Nettomarge',    value: `${latest.net_margin_pct.toFixed(1)}%` },
+                { label: 'Netto-inkomen', value: formatCurrency(primary.net_income, true) },
+                { label: 'Nettomarge',    value: `${primary.net_margin_pct.toFixed(1)}%` },
+                { label: 'Brutowinst',    value: formatCurrency(primary.gross_profit, true) },
+                { label: 'GOP-marge',     value: `${primary.gop_margin_pct.toFixed(1)}%` },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-surface rounded-lg px-4 py-3 flex justify-between items-center">
+                <div key={label} className="bg-surface rounded-lg px-4 py-3 flex justify-between items-center border border-border">
                   <span className="text-text-muted text-xs">{label}</span>
                   <span className="text-text font-medium">{value}</span>
                 </div>
@@ -168,7 +188,7 @@ export default function CompanyDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[500px]">
                     <thead>
-                      <tr className="border-b border-border text-text-muted text-xs uppercase tracking-wide">
+                      <tr className="border-b border-border text-text-faint text-xs uppercase tracking-wide bg-surface-raised/50">
                         <th className="text-left px-5 py-3">Maand</th>
                         <th className="text-right px-4 py-3">Omzet</th>
                         <th className="text-right px-4 py-3">GOP</th>
@@ -177,7 +197,7 @@ export default function CompanyDetailPage() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {[...timeline].reverse().map(row => (
-                        <tr key={`${row.period_year}-${row.period_month}`} className="hover:bg-surface-raised">
+                        <tr key={`${row.period_year}-${row.period_month}`} className="hover:bg-surface-raised transition-colors">
                           <td className="px-5 py-3 text-text-muted text-xs">
                             {MONTH_NAMES[row.period_month - 1]} {row.period_year}
                           </td>
