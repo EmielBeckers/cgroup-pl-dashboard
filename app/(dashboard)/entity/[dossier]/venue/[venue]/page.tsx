@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { VenueStatement } from '@/components/pl/venue-statement'
-import { PlVenueRow, YEARS, entityName, venueName } from '@/lib/pl-live'
+import { PlVenueRow, YEARS, VENUE_ENTITIES, entityName, venueName } from '@/lib/pl-live'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +20,9 @@ export default async function VenuePage({ params }: { params: Promise<{ dossier:
     .from('user_profiles').select('role').eq('id', user.id).single()
   if (!profile || !['board', 'accounting'].includes(profile.role)) redirect('/group')
 
+  // Venue pages exist only for the GREEN-validated venue entities — the
+  // hotel blanpla slices in pl_venues are not standalone venue P&Ls.
+  if (!VENUE_ENTITIES.includes(dossier)) notFound()
   const { data: known } = await supabase.from('pl_venues')
     .select('venue').eq('dossier_code', dossier).eq('venue', venue)
   if (!known || known.length === 0) notFound()

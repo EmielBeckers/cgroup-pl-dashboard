@@ -82,9 +82,10 @@ export function blockOf(r: Pick<PlEntityRow, 'is_revenue' | 'usali_department' |
 
 // Display order for USALI departments (presentation only).
 const DEPT_ORDER = [
-  'F&B', 'Payroll & Related',
+  'Rooms', 'F&B', 'Other Operated', 'Payroll & Related',
   'Undistributed — S&M', 'Undistributed — Fleet', 'Undistributed — A&G',
   'Undistributed — POM', 'Undistributed — Utilities', 'Undistributed — IT',
+  'Undistributed — Housekeeping & linnen',
   'Management Fees', 'Non-Operating', 'UNMAPPED',
 ]
 export function deptRank(dept: string): number {

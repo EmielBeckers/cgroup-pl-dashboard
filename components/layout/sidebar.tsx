@@ -7,7 +7,7 @@ import { Building2, LogOut, ChevronDown, ChevronRight, Layers, ReceiptText } fro
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { UserProfile } from '@/lib/types'
-import { entityName, venueName, META_VENUES } from '@/lib/pl-live'
+import { entityName, venueName, META_VENUES, VENUE_ENTITIES } from '@/lib/pl-live'
 import { useState } from 'react'
 
 interface SidebarProps {
@@ -64,7 +64,9 @@ export function Sidebar({ profile, dossiers, venuesByDossier }: SidebarProps) {
               <div className="mt-0.5 flex flex-col gap-0">
                 {dossiers.map(d => {
                   const active = pathname === `/entity/${d}`
-                  const venues = (venuesByDossier[d] ?? [])
+                  // Only the GREEN-validated venue entities get venue links;
+                  // hotel blanpla slices (HOTEL/REST) are not venue P&Ls.
+                  const venues = (VENUE_ENTITIES.includes(d) ? venuesByDossier[d] ?? [] : [])
                     .filter(v => !META_VENUES.includes(v))
                     .sort((a, b) => venueName(a).localeCompare(venueName(b)))
                   const inEntity = pathname.startsWith(`/entity/${d}`)
