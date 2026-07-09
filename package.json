@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-honesty.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
-    "refresh": "tsx scripts/refresh.ts"
+    "refresh": "tsx scripts/refresh.ts",
+    "check:honest": "node scripts/check-honesty.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",
