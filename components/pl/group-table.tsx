@@ -312,6 +312,7 @@ interface InvoiceRow {
   bllever_id: number | null; supplier: string | null; invoice_number: string | null
   invoice_date: string | null; invoice_total: number | null; gl_amount: number
   gl_entries: number; ubl_doc_id: number | null; ubl_status: string | null; ubl_line_count: number | null
+  pdf_doc_id: number | null
 }
 interface UblLine {
   line_no: number; description: string | null; item_name: string | null; quantity: number | null
@@ -387,6 +388,10 @@ function InvoiceDrill({ dossier, department, line }: { dossier: string; departme
                   : r.ubl_doc_id
                     ? <span className="text-text-faint">e-doc (geen lijndetail)</span>
                     : <span className="text-text-faint">geen e-document</span>}
+                {r.pdf_doc_id && (
+                  <a href={`/api/invoice-pdf?dossier=${dossier}&doc=${r.pdf_doc_id}`}
+                     target="_blank" rel="noreferrer" className="text-gold hover:underline">PDF</a>
+                )}
               </div>
               {ublFor === r.ubl_doc_id && r.ubl_doc_id && (
                 <div className="ml-6 my-1 border-l-2 border-gold/30 pl-3">

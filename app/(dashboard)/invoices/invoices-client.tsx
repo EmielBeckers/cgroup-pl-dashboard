@@ -26,6 +26,7 @@ interface InvoiceRow {
   ubl_doc_id: number | null
   ubl_status: string | null
   ubl_line_count: number | null
+  pdf_doc_id: number | null
 }
 
 interface Summary { invoice_count: number; total_eur: number; with_edoc: number; with_lines: number }
@@ -173,14 +174,15 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
                 <td className="px-3 py-2 text-right">Bedrag incl. btw</td>
                 <td className="px-3 py-2">Vervaldatum</td>
                 <td className="px-3 py-2">E-document</td>
+                <td className="px-3 py-2">PDF</td>
               </tr>
             </thead>
             <tbody>
               {rows === null && (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-text-faint">Laden…</td></tr>
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-text-faint">Laden…</td></tr>
               )}
               {rows !== null && rows.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-text-muted">Geen facturen voor deze filters.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-text-muted">Geen facturen voor deze filters.</td></tr>
               )}
               {(rows ?? []).map(r => {
                 const key = r.ubl_doc_id != null ? `${r.dossier_code}:${r.ubl_doc_id}` : null
@@ -205,10 +207,16 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
                             ? <span className="text-text-faint">e-doc (geen lijndetail)</span>
                             : <span className="text-text-faint">geen</span>}
                       </td>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        {r.pdf_doc_id
+                          ? <a href={`/api/invoice-pdf?dossier=${r.dossier_code}&doc=${r.pdf_doc_id}`}
+                               target="_blank" rel="noreferrer" className="text-gold hover:underline">PDF</a>
+                          : <span className="text-text-faint">—</span>}
+                      </td>
                     </tr>
                     {key !== null && ublFor === key && (
                       <tr>
-                        <td colSpan={7} className="px-6 pb-2">
+                        <td colSpan={8} className="px-6 pb-2">
                           <div className="border-l-2 border-gold/30 pl-3 py-1">
                             {!ublLines[key] && <p className="text-text-faint">Laden…</p>}
                             {(ublLines[key] ?? []).map(l => (
