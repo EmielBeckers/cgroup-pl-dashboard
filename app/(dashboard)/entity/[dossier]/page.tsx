@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityDetail } from '@/components/pl/entity-detail'
 import { PlCharts } from '@/components/charts/pl-charts'
-import { PlEntityRow, PlVenueRow, PlHotelRow, YEARS, VENUE_ENTITIES, HOTEL_ENTITIES, entityName } from '@/lib/pl-live'
+import { PlEntityRow, PlVenueRow, PlHotelRow, PlExclusionRow, YEARS, VENUE_ENTITIES, HOTEL_ENTITIES, entityName } from '@/lib/pl-live'
 import { PlMonthRow } from '@/lib/pl-charts-data'
 
 export const dynamic = 'force-dynamic'
@@ -21,14 +21,16 @@ export default async function EntityPage({ params }: { params: Promise<{ dossier
   const { data: dossiers } = await supabase.from('pl_dossiers').select('dossier_code')
   if (!(dossiers ?? []).some(d => d.dossier_code === dossier)) notFound()
 
-  const [monthPart, ...entityParts] = await Promise.all([
+  const [monthPart, exclusionsPart, ...entityParts] = await Promise.all([
     supabase.from('pl_month').select('*').eq('dossier_code', dossier).gte('month', '2023-01-01'),
+    supabase.from('pl_exclusions').select('*').eq('dossier_code', dossier),
     ...YEARS.map(y =>
       supabase.from('pl_entity').select('*').eq('dossier_code', dossier).eq('calendar_year', y)
     ),
   ])
   const entityRows = entityParts.flatMap(p => (p.data ?? [])) as PlEntityRow[]
   const monthRows = (monthPart.data ?? []) as PlMonthRow[]
+  const exclusions = (exclusionsPart.data ?? []) as PlExclusionRow[]
 
   let venueRows: PlVenueRow[] | null = null
   if (VENUE_ENTITIES.includes(dossier)) {
@@ -56,7 +58,7 @@ export default async function EntityPage({ params }: { params: Promise<{ dossier
       <Card>
         <CardHeader><CardTitle>USALI P&L</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">
-          <EntityDetail dossier={dossier} entityRows={entityRows} venueRows={venueRows} hotelRows={hotelRows} />
+          <EntityDetail dossier={dossier} entityRows={entityRows} venueRows={venueRows} hotelRows={hotelRows} exclusions={exclusions} />
         </CardContent>
       </Card>
     </main>

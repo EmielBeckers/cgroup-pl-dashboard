@@ -1,20 +1,45 @@
 'use client'
 
+import { Info } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 import { LiveStatement, VenueDrill, HotelDrill } from '@/components/pl/group-table'
-import { PlEntityRow, PlVenueRow, PlHotelRow, YEARS, VENUE_ENTITIES, HOTEL_ENTITIES } from '@/lib/pl-live'
+import { PlEntityRow, PlVenueRow, PlHotelRow, PlExclusionRow, YEARS, VENUE_ENTITIES, HOTEL_ENTITIES } from '@/lib/pl-live'
 
 // Real data only: entity statement from pl_entity; venue breakdown from
 // pl_venue (validated venue->dossier attribution); hotels via pl_hotel with
 // their caveats and Mews placeholders; unmapped entities get totals + note.
-export function EntityDetail({ dossier, entityRows, venueRows, hotelRows }: {
+// Mapped exclusions (pl_exclusions) render as an unmissable banner: anyone
+// tying this P&L to the raw GL must see what was left out and why.
+export function EntityDetail({ dossier, entityRows, venueRows, hotelRows, exclusions = [] }: {
   dossier: string
   entityRows: PlEntityRow[]
   venueRows: PlVenueRow[] | null
   hotelRows: PlHotelRow[] | null
+  exclusions?: PlExclusionRow[]
 }) {
   const unmapped = !VENUE_ENTITIES.includes(dossier) && !HOTEL_ENTITIES.includes(dossier)
+  const exclByLabel = new Map<string, PlExclusionRow[]>()
+  for (const e of exclusions) {
+    if (!exclByLabel.has(e.label)) exclByLabel.set(e.label, [])
+    exclByLabel.get(e.label)!.push(e)
+  }
   return (
     <div className="overflow-x-auto">
+      {exclByLabel.size > 0 && (
+        <div className="mx-3 mb-2 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <p className="font-semibold flex items-center gap-1.5">
+            <Info size={13} /> Niet in deze P&L (bewuste uitsluiting)
+          </p>
+          {Array.from(exclByLabel.entries()).map(([label, rows]) => (
+            <p key={label} className="mt-1">
+              {label} (rek. {rows[0].account_nr}):{' '}
+              {rows.sort((a, b) => a.calendar_year - b.calendar_year)
+                .map(r => `${r.calendar_year} ${formatCurrency(Number(r.amount))}`).join(' · ')}
+              {' — '}intragroepstroom; het resultaat hieronder ligt dus zoveel lager dan het ruwe grootboek.
+            </p>
+          ))}
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[10px] uppercase tracking-widest text-text-faint">

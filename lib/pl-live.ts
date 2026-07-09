@@ -31,6 +31,16 @@ export interface PlHotelRow {
   amount: number
 }
 
+// Amounts excluded from the P&L by explicit mapping decision (e.g. Century
+// dividends) — from public.pl_exclusions, shown visibly, never hardcoded.
+export interface PlExclusionRow {
+  dossier_code: string
+  calendar_year: number
+  account_nr: string
+  label: string
+  amount: number
+}
+
 export const YEARS = [2024, 2025, 2026] as const
 
 // Entities whose venue drill uses pl_venue (validated GREEN rollout).
