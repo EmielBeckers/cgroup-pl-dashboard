@@ -88,9 +88,10 @@ function generateMockMonth(baseRevenue: number, month: number, venueName: string
     cogs_food:                    round2(revFood * jitter(0.30)),
     cogs_beverage:                round2(revBev  * jitter(0.22)),
     cogs_other_operated_depts:    isHotel ? round2(revOtherOps * jitter(0.35)) : 0,
-    labour_management:            round2(labour * 0.18),
-    labour_service:               round2(labour * 0.47),
-    labour_kitchen:               round2(labour * 0.35),
+    // Function split removed 2026-07-08 (was fabricated ratios): single bucket.
+    labour_management:            0,
+    labour_service:               0,
+    labour_kitchen:               round2(labour),
     ...expCols,
     overhead_rent: 0, overhead_utilities: 0, overhead_marketing: 0, overhead_other: 0,
     management_fees:    round2(total * jitter(0.02, 0.10)),

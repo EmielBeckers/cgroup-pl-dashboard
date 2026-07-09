@@ -47,6 +47,11 @@ export function PlStatement({
 
   return (
     <div className="overflow-x-auto">
+      {/* HONEST MODE: this component renders the mock pl_snapshots path. */}
+      <div className="mx-3 mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
+        <strong>DEMO-CIJFERS</strong> — deze tabel is niet gekoppeld aan de boekhouding
+        (gegenereerde voorbeelddata, enkel totalen). Echte, gevalideerde cijfers: zie <strong>Groep P&L</strong>.
+      </div>
       <table className="w-full text-sm" style={{ minWidth: hasComp ? 780 : 420 }}>
         <thead>
           {/* Group header row — shows period labels spanning columns */}

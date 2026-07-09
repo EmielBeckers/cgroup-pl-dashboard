@@ -247,9 +247,10 @@ function buildPlRow(
 
   // Labour (~34% total revenue)
   const totalLabour = totalRev * jitter(0.34)
-  const labMgmt     = round2(totalLabour * 0.18)
-  const labService  = round2(totalLabour * 0.47)
-  const labKitchen  = round2(totalLabour - labMgmt - labService)
+  // Function split removed 2026-07-08 (was fabricated ratios): single bucket.
+  const labMgmt     = 0
+  const labService  = 0
+  const labKitchen  = round2(totalLabour)
 
   // Other expenses (~22% total revenue), distributed per EXP_DIST
   const expPool = totalRev * jitter(0.22)
