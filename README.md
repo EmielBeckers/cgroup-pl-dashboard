@@ -49,3 +49,14 @@ Enforced by `npm run check:honest` (runs before every build): display code
 must not multiply amounts by ratio literals, the mock renderer stays
 totals-only, and no DB view/matview may contain a ratio in its definition
 (`public.check_view_honesty()`).
+
+**Complete months only (added 2026-07-09).** Time comparisons (YTD, month
+vs last year, trailing trends) may only cover COMPLETE months on both
+sides. The running month holds bookings up to last night's sync; comparing
+it against a full prior month is a second failure category: every number
+real, the comparison itself fabricated. Background: the first chart build
+compared 9 days of July 2026 against full July 2025 and reported "-14%
+omzet" where the complete-month truth was "+3%". Adapters anchor on the
+last complete month (`lastCompleteMonth()` in `lib/pl-charts-data.ts`);
+any new comparison must do the same or label the period asymmetry
+explicitly.
