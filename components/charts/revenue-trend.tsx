@@ -1,77 +1,66 @@
 'use client'
 
-import { PlFull } from '@/lib/types'
-import { formatCurrency, MONTH_NAMES } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
+import { TrailingPoint } from '@/lib/pl-charts-data'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
 
-interface Props {
-  snapshots: PlFull[]
-  showEbitda?: boolean
-}
+interface Props { points: TrailingPoint[] }
 
-export function RevenueTrend({ snapshots, showEbitda = true }: Props) {
-  const data = snapshots.map(s => ({
-    label: `${MONTH_NAMES[s.period_month - 1]} ${String(s.period_year).slice(2)}`,
-    revenue: s.total_operating_revenue,
-    ebitda: s.ebitda,
-  }))
+export function RevenueTrend({ points }: Props) {
+  const curTotal   = points.reduce((s, p) => s + (p.current ?? 0), 0)
+  const priorTotal = points.reduce((s, p) => s + (p.prior ?? 0), 0)
+  const above = curTotal >= priorTotal
+
+  const fill = above ? '#16a34a' : '#dc2626'
+  const stroke = '#b8962e'
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={240}>
+      <ComposedChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>
-          <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#b8962e" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#b8962e" stopOpacity={0} />
-          </linearGradient>
-          <linearGradient id="gradEbitda" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={fill} stopOpacity={0.18} />
+            <stop offset="95%" stopColor={fill} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid stroke="#2a2a2a" strokeDasharray="3 3" vertical={false} />
+        <CartesianGrid stroke="#e5e0d8" strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fill: '#888888', fontSize: 11 }}
-          axisLine={false}
+          tick={{ fill: '#6b6560', fontSize: 11 }}
+          axisLine={{ stroke: '#e5e0d8' }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#888888', fontSize: 11 }}
+          tick={{ fill: '#a09890', fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           tickFormatter={v => formatCurrency(v, true)}
-          width={60}
+          width={56}
         />
         <Tooltip
-          contentStyle={{ background: '#222222', border: '1px solid #2a2a2a', borderRadius: 6 }}
-          labelStyle={{ color: '#888888', fontSize: 11 }}
+          cursor={{ stroke: '#e5e0d8' }}
+          contentStyle={{ background: '#ffffff', border: '1px solid #e5e0d8', borderRadius: 8, fontSize: 12, color: '#1c1814' }}
+          labelStyle={{ color: '#6b6560', fontSize: 11, marginBottom: 2 }}
           formatter={(v, name) => [
-            formatCurrency(Number(v ?? 0)),
-            name === 'revenue' ? 'Omzet' : 'EBITDA',
+            v == null ? '—' : formatCurrency(Number(v)),
+            name === 'current' ? 'Dit jaar' : 'Vorig jaar',
           ]}
         />
-        <Area
-          type="monotone"
-          dataKey="revenue"
-          stroke="#b8962e"
-          strokeWidth={2}
-          fill="url(#gradRevenue)"
-          dot={false}
+        <Legend
+          formatter={value => value === 'current' ? 'Dit jaar' : 'Vorig jaar'}
+          wrapperStyle={{ fontSize: 11, color: '#6b6560' }}
         />
-        {showEbitda && (
-          <Area
-            type="monotone"
-            dataKey="ebitda"
-            stroke="#22c55e"
-            strokeWidth={2}
-            fill="url(#gradEbitda)"
-            dot={false}
-          />
-        )}
-      </AreaChart>
+        <Area
+          type="monotone" dataKey="current" stroke={stroke} strokeWidth={2.5}
+          fill="url(#revFill)" dot={false} connectNulls
+        />
+        <Line
+          type="monotone" dataKey="prior" stroke="#a09890" strokeWidth={1.5}
+          strokeDasharray="4 3" dot={false} connectNulls
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   )
 }

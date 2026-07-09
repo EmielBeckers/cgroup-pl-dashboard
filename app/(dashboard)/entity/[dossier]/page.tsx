@@ -2,7 +2,9 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityDetail } from '@/components/pl/entity-detail'
+import { PlCharts } from '@/components/charts/pl-charts'
 import { PlEntityRow, PlVenueRow, PlHotelRow, YEARS, VENUE_ENTITIES, HOTEL_ENTITIES, entityName } from '@/lib/pl-live'
+import { PlMonthRow } from '@/lib/pl-charts-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,10 +21,14 @@ export default async function EntityPage({ params }: { params: Promise<{ dossier
   const { data: dossiers } = await supabase.from('pl_dossiers').select('dossier_code')
   if (!(dossiers ?? []).some(d => d.dossier_code === dossier)) notFound()
 
-  const entityParts = await Promise.all(YEARS.map(y =>
-    supabase.from('pl_entity').select('*').eq('dossier_code', dossier).eq('calendar_year', y)
-  ))
+  const [monthPart, ...entityParts] = await Promise.all([
+    supabase.from('pl_month').select('*').eq('dossier_code', dossier).gte('month', '2023-01-01'),
+    ...YEARS.map(y =>
+      supabase.from('pl_entity').select('*').eq('dossier_code', dossier).eq('calendar_year', y)
+    ),
+  ])
   const entityRows = entityParts.flatMap(p => (p.data ?? [])) as PlEntityRow[]
+  const monthRows = (monthPart.data ?? []) as PlMonthRow[]
 
   let venueRows: PlVenueRow[] | null = null
   if (VENUE_ENTITIES.includes(dossier)) {
@@ -46,6 +52,7 @@ export default async function EntityPage({ params }: { params: Promise<{ dossier
           P&L uit de gevalideerde adsolut-views — sluit aan op het grootboek excl. 69x/79x.
         </p>
       </div>
+      <PlCharts name={entityName(dossier)} entityRows={entityRows} monthRows={monthRows} />
       <Card>
         <CardHeader><CardTitle>USALI P&L</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">
