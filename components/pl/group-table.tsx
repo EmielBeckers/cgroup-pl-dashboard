@@ -484,12 +484,20 @@ export function LiveStatement({ rows, dossier, drill = true, indentBase = 'pl-10
     const b = blockOf(r)
     if (b !== 'Non-Operating' && b !== 'UNMAPPED') addYear(operating, r.calendar_year, r.amount)
   }
+  // The operating subtotal renders after the LAST operating block present
+  // (not every statement has Management Fees — venue pages often don't),
+  // and only when there are operating cost blocks at all (for unmapped
+  // entities "vóór non-operating" would just repeat Omzet).
+  const present = BLOCK_ORDER.filter(b => byBlock.has(b))
+  const isOperating = (b: string) => b !== 'Non-Operating' && b !== 'UNMAPPED'
+  const lastOperating = [...present].reverse().find(isOperating)
+  const hasOperatingCosts = present.some(b => b !== 'Revenue' && isOperating(b))
   return (
     <>
-      {BLOCK_ORDER.filter(b => byBlock.has(b)).map(b => (
+      {present.map(b => (
         <React.Fragment key={b}>
           <StatementBlock block={b} rows={byBlock.get(b)!} indentBase={indentBase} dossier={dossier} drill={drill} />
-          {b === 'Management Fees' && (
+          {hasOperatingCosts && b === lastOperating && (
             <tr key="op" className="border-t border-border/60">
               <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>Resultaat vóór non-operating</td>
               {YEARS.map(y => (

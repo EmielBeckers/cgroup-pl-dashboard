@@ -23,10 +23,22 @@ export interface TrailingPoint {
 const MONTH_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
 
 /**
+ * Cutoff for month comparisons: the last COMPLETE month. The running month
+ * only holds bookings up to last night's sync — charting it against a full
+ * prior month would fabricate a crash. The cap also drops the handful of
+ * mistyped future dates in the source (see DATA_QUESTIONS).
+ */
+function lastCompleteMonth(today: Date): string {
+  let y = today.getFullYear()
+  let m = today.getMonth() // 0-based → this is already the 1-based previous month
+  if (m < 1) { m = 12; y -= 1 }
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+
+/**
  * Revenue per month for the trailing window, next to the same month a year
- * earlier. Anchored on the latest month with revenue activity (not after
- * today — the source contains a handful of mistyped future dates, see
- * DATA_QUESTIONS). Months without revenue rows stay null.
+ * earlier. Anchored on the latest complete month with revenue activity.
+ * Months without revenue rows stay null.
  */
 export function trailingRevenue(rows: PlMonthRow[], monthsBack = 12, today = new Date()): TrailingPoint[] {
   const byMonth = new Map<string, number>() // 'YYYY-MM' -> revenue
@@ -35,7 +47,7 @@ export function trailingRevenue(rows: PlMonthRow[], monthsBack = 12, today = new
     const key = r.month.slice(0, 7)
     byMonth.set(key, (byMonth.get(key) ?? 0) + r.amount)
   }
-  const cutoff = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const cutoff = lastCompleteMonth(today)
   const inRange = Array.from(byMonth.keys()).filter(k => k >= '2023-01' && k <= cutoff).sort()
   if (inRange.length === 0) return []
   const [ay, am] = inRange[inRange.length - 1].split('-').map(Number)
@@ -54,10 +66,13 @@ export function trailingRevenue(rows: PlMonthRow[], monthsBack = 12, today = new
   return points
 }
 
-/** Year-to-date revenue vs the same months last year (real months only). */
+/**
+ * Year-to-date revenue vs the same months last year — complete months only,
+ * so both sides of the comparison cover identical periods.
+ */
 export interface YtdComparison {
   year: number
-  throughMonth: number // 1..12, latest month with revenue this year
+  throughMonth: number // 1..12, latest complete month with revenue this year
   current: number
   prior: number
 }
@@ -69,7 +84,7 @@ export function ytdRevenue(rows: PlMonthRow[], today = new Date()): YtdCompariso
     const key = r.month.slice(0, 7)
     byMonth.set(key, (byMonth.get(key) ?? 0) + r.amount)
   }
-  const cutoff = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const cutoff = lastCompleteMonth(today)
   const inRange = Array.from(byMonth.keys()).filter(k => k >= '2023-01' && k <= cutoff).sort()
   if (inRange.length === 0) return null
   const [year, throughMonth] = inRange[inRange.length - 1].split('-').map(Number)
