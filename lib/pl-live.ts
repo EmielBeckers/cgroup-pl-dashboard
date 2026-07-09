@@ -51,8 +51,8 @@ export const ENTITY_NAMES: Record<string, string> = {
 }
 
 export const VENUE_NAMES: Record<string, string> = {
-  ATELV: 'Atelier V', ODIEL: 'Odiel', ORD: 'Ordingen', PLAGE: 'Plage Odette',
-  TCA: 'Christmas Alley', POPUP: 'Pop-up',
+  ATELV: 'Atelier V', ODIEL: 'Odiel', ORD: 'De Commandeur', PLAGE: 'Plage Odette',
+  TCA: "The Alley's", POPUP: 'Pop-up',
   BAR: 'Corda Bar', LATTE: 'Corda Latte', CUISINE: 'Corda Cuisine',
   CORDAAT: 'Cordaat', ARENA: 'Arena', CATERING: 'Catering (invoiced)',
   INTRAGROUP: 'Intragroup', ALGEMEEN: 'Algemeen (shared)',
@@ -65,6 +65,20 @@ export const VENUE_NAMES: Record<string, string> = {
 
 export function entityName(code: string) { return ENTITY_NAMES[code] ?? code }
 export function venueName(code: string) { return VENUE_NAMES[code] ?? code }
+
+// Attribution buckets in pl_venue that are not physical venues — shown in
+// the P&L drill, but never as navigable venue pages.
+export const META_VENUES = ['UNALLOCATED', 'ALGEMEEN', 'INTRAGROUP']
+
+// Block assignment is presentation of the mapping's own output (dept +
+// line prefix + is_revenue flag from the views) — never re-classification.
+export function blockOf(r: Pick<PlEntityRow, 'is_revenue' | 'usali_department' | 'usali_line'>): string {
+  if (r.is_revenue) return 'Revenue'
+  if (r.usali_department === 'F&B' && r.usali_line.startsWith('Cost of Sales')) return 'Cost of Sales'
+  if (r.usali_department === 'Payroll & Related') return 'Labour'
+  if (r.usali_department.startsWith('Undistributed') || r.usali_department === 'F&B') return 'Other Operating Expenses'
+  return r.usali_department // Management Fees | Non-Operating | UNMAPPED
+}
 
 // Display order for USALI departments (presentation only).
 const DEPT_ORDER = [

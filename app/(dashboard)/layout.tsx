@@ -10,16 +10,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Entity list comes from the REAL data (adsolut dossiers via the
   // role-gated pl_dossiers view) — never from the mock companies table.
-  const [{ data: profile }, { data: dossiers }] = await Promise.all([
+  // pl_venues lists the venues that actually have bookings per entity;
+  // the meta buckets (UNALLOCATED/ALGEMEEN/INTRAGROUP) are filtered in the
+  // sidebar — they stay visible in the P&L drill itself.
+  const [{ data: profile }, { data: dossiers }, { data: venues }] = await Promise.all([
     supabase.from('user_profiles').select('*').eq('id', user.id).single(),
     supabase.from('pl_dossiers').select('dossier_code'),
+    supabase.from('pl_venues').select('dossier_code, venue'),
   ])
+
+  const venuesByDossier: Record<string, string[]> = {}
+  for (const v of venues ?? []) {
+    ;(venuesByDossier[v.dossier_code as string] ??= []).push(v.venue as string)
+  }
 
   return (
     <div className="flex min-h-screen bg-bg">
       <Sidebar
         profile={profile as UserProfile | null}
         dossiers={(dossiers ?? []).map(d => d.dossier_code as string).sort()}
+        venuesByDossier={venuesByDossier}
       />
       <div className="flex-1 flex flex-col min-w-0">
         {children}

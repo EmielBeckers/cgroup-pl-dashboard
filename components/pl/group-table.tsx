@@ -8,7 +8,7 @@ import { CaveatBadge, CaveatNote } from '@/components/pl/caveat-badge'
 import {
   PlEntityRow, PlVenueRow, PlHotelRow, YEARS, YearAmounts,
   VENUE_ENTITIES, HOTEL_ENTITIES, entityName, venueName, deptRank,
-  revenueAndResult, addYear,
+  revenueAndResult, addYear, blockOf,
 } from '@/lib/pl-live'
 
 interface Props { entityRows: PlEntityRow[] }
@@ -298,15 +298,7 @@ const DETAIL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN']
 const DRILL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN']
 const DRILLABLE_BLOCKS = ['Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating']
 
-// Block assignment is presentation of the mapping's own output (dept +
-// line prefix + is_revenue flag from the views) — never re-classification.
-function blockOf(r: PlEntityRow): string {
-  if (r.is_revenue) return 'Revenue'
-  if (r.usali_department === 'F&B' && r.usali_line.startsWith('Cost of Sales')) return 'Cost of Sales'
-  if (r.usali_department === 'Payroll & Related') return 'Labour'
-  if (r.usali_department.startsWith('Undistributed') || r.usali_department === 'F&B') return 'Other Operating Expenses'
-  return r.usali_department // Management Fees | Non-Operating | UNMAPPED
-}
+// blockOf lives in lib/pl-live.ts (shared with the chart adapters).
 const BLOCK_ORDER = ['Revenue', 'Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating', 'UNMAPPED']
 const BLOCK_LABEL: Record<string, string> = {
   'Revenue': 'Omzet', 'Cost of Sales': 'Cost of Sales', 'Labour': 'Loon & gerelateerd',
