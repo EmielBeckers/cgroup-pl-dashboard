@@ -308,10 +308,10 @@ function BlockGroup({ block, rows }: { block: string; rows: PlHotelRow[] }) {
 
 /* ---------------- live USALI statement (block detail) ------------------- */
 // Staged rollout: entities whose expand shows the full block statement.
-// HASHOTEL and CENTURY joined 2026-07-09 (usali_mapping gates green).
-const DETAIL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY']
+// All 8 dossiers mapped since 2026-07-14 (MIAMENSA/GREENVALLEY last).
+const DETAIL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY', 'MIAMENSA', 'GREENVALLEY']
 // Invoice drill-down staged rollout (report-first discipline):
-const DRILL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY']
+const DRILL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY', 'MIAMENSA', 'GREENVALLEY']
 const DRILLABLE_BLOCKS = ['Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating', 'D&A', 'Interest', 'Income Taxes']
 
 // blockOf lives in lib/pl-live.ts (shared with the chart adapters).

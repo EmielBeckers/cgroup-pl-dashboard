@@ -53,8 +53,8 @@ export function EntityDetail({ dossier, entityRows, venueRows, hotelRows, exclus
           {unmapped && (
             <tr><td colSpan={1 + YEARS.length} className="px-4 py-1 text-[11px] text-text-faint">
               {dossier === 'MIAMENSA'
-                ? 'Enkele venue — entiteit = venue. USALI-mapping nog niet opgezet: enkel totalen, geen verzonnen detail.'
-                : 'USALI-mapping nog niet opgezet voor deze entiteit — enkel totalen (omzet per rekeningklasse), geen verzonnen detail.'}
+                ? 'Enkele venue — entiteit = venue.'
+                : 'Venue-opsplitsing volgt (rekeningen zijn venue-gecodeerd — zie DATA_QUESTIONS).'}
             </td></tr>
           )}
           <LiveStatement rows={entityRows} dossier={dossier} indentBase="pl-4" />
