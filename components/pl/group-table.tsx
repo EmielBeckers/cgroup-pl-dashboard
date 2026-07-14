@@ -22,6 +22,21 @@ function Amount({ value, bold }: { value: number | undefined; bold?: boolean }) 
   )
 }
 
+// Amount with USALI vertical analysis: the line as % of Total Operating
+// Revenue of the same statement (signed — the number and its % agree).
+function AmountPct({ value, tor, bold }: { value: number | undefined; tor: number | undefined; bold?: boolean }) {
+  const pct = value !== undefined && Math.round(value) !== 0 && tor && Math.round(tor) !== 0
+    ? (value / tor) * 100 : null
+  return (
+    <>
+      <div><Amount value={value} bold={bold} /></div>
+      <div className="text-[9px] text-text-faint tabular-nums leading-tight">
+        {pct === null ? ' ' : `${pct.toFixed(1)}%`}
+      </div>
+    </>
+  )
+}
+
 function YearCells({ revenue, result }: { revenue: YearAmounts; result: YearAmounts }) {
   return (
     <>
@@ -297,15 +312,28 @@ function BlockGroup({ block, rows }: { block: string; rows: PlHotelRow[] }) {
 const DETAIL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY']
 // Invoice drill-down staged rollout (report-first discipline):
 const DRILL_ENTITIES = ['CUSTOMIZZE', 'CCORDA', 'COUTDOOR', 'BLUEOCEAN', 'HASHOTEL', 'CENTURY']
-const DRILLABLE_BLOCKS = ['Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating']
+const DRILLABLE_BLOCKS = ['Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating', 'D&A', 'Interest', 'Income Taxes']
 
 // blockOf lives in lib/pl-live.ts (shared with the chart adapters).
-const BLOCK_ORDER = ['Revenue', 'Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating', 'UNMAPPED']
+// Order = the USALI summary ladder; headers/subtotals in official USALI
+// English (line items keep their Dutch account descriptions).
+const BLOCK_ORDER = ['Revenue', 'Cost of Sales', 'Labour', 'Other Operating Expenses', 'Management Fees', 'Non-Operating', 'D&A', 'Interest', 'Income Taxes', 'UNMAPPED']
 const BLOCK_LABEL: Record<string, string> = {
-  'Revenue': 'Omzet', 'Cost of Sales': 'Cost of Sales', 'Labour': 'Loon & gerelateerd',
-  'Other Operating Expenses': 'Overige operationele kosten', 'Management Fees': 'Management fees',
-  'Non-Operating': 'Non-operating', 'UNMAPPED': 'Niet gemapt — REVIEW',
+  'Revenue': 'Operating Revenue', 'Cost of Sales': 'Cost of Sales', 'Labour': 'Payroll & Related Expenses',
+  'Other Operating Expenses': 'Other Expenses', 'Management Fees': 'Management Fees',
+  'Non-Operating': 'Non-Operating Income & Expenses', 'D&A': 'Depreciation & Amortization',
+  'Interest': 'Interest', 'Income Taxes': 'Income Taxes', 'UNMAPPED': 'Niet gemapt — REVIEW',
 }
+// Subtotals render after the LAST present anchor block, and only when at
+// least one anchor block exists — a ladder step that would just repeat the
+// previous number is noise, and for unmapped entities it would be a lie.
+const SUBTOTALS: { label: string; anchors: string[] }[] = [
+  { label: 'Gross Profit', anchors: ['Cost of Sales'] },
+  { label: 'Gross Operating Profit (GOP)', anchors: ['Labour', 'Other Operating Expenses'] },
+  { label: 'Income Before Non-Operating Income & Expenses', anchors: ['Management Fees'] },
+  { label: 'EBITDA', anchors: ['Non-Operating'] },
+  { label: 'Income Before Income Taxes', anchors: ['D&A', 'Interest'] },
+]
 
 /* ---------------- invoice drill-down (real chain, honest coverage) ------ */
 
@@ -420,8 +448,10 @@ function InvoiceDrill({ dossier, department, line }: { dossier: string; departme
   )
 }
 
-function StatementBlock({ block, rows, indentBase, dossier, drill = true }: { block: string; rows: PlEntityRow[]; indentBase: string; dossier: string; drill?: boolean }) {
-  const [open, setOpen] = useState(false)
+function StatementBlock({ block, rows, indentBase, dossier, drill = true, tor }: { block: string; rows: PlEntityRow[]; indentBase: string; dossier: string; drill?: boolean; tor: YearAmounts }) {
+  // Blocks unfold by default (one level deeper); the invoice drill under
+  // each line stays collapsed.
+  const [open, setOpen] = useState(true)
   const [drillLine, setDrillLine] = useState<string | null>(null)
   const totals: YearAmounts = {}
   // sub-line = subgroup (dept, for Other OpEx) + display label; only rows
@@ -452,7 +482,7 @@ function StatementBlock({ block, rows, indentBase, dossier, drill = true }: { bl
           <span className="text-[9px] font-normal text-text-faint">({lines.size} lijnen · bron: usali_mapping)</span>
         </td>
         {YEARS.map(y => (
-          <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50"><Amount value={totals[y]} bold /></td>
+          <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50"><AmountPct value={totals[y]} tor={tor[y]} bold /></td>
         ))}
       </tr>
       {open && orderedLines.map(([sub, e]) => (
@@ -466,7 +496,7 @@ function StatementBlock({ block, rows, indentBase, dossier, drill = true }: { bl
               {sub}
             </td>
             {YEARS.map(y => (
-              <td key={y} className="px-3 py-1 text-right text-[11px] border-l border-border/50"><Amount value={e.ya[y]} /></td>
+              <td key={y} className="px-3 py-1 text-right text-[11px] border-l border-border/50"><AmountPct value={e.ya[y]} tor={tor[y]} /></td>
             ))}
           </tr>
           {drillLine === sub && <InvoiceDrill dossier={dossier} department={e.dept} line={e.line} />}
@@ -478,45 +508,54 @@ function StatementBlock({ block, rows, indentBase, dossier, drill = true }: { bl
 
 export function LiveStatement({ rows, dossier, drill = true, indentBase = 'pl-10' }: { rows: PlEntityRow[]; dossier: string; drill?: boolean; indentBase?: string }) {
   const byBlock = new Map<string, PlEntityRow[]>()
+  const tor: YearAmounts = {} // Total Operating Revenue — denominator of the % column
   for (const r of rows) {
     const b = blockOf(r)
     if (!byBlock.has(b)) byBlock.set(b, [])
     byBlock.get(b)!.push(r)
+    if (b === 'Revenue') addYear(tor, r.calendar_year, r.amount)
   }
-  const operating: YearAmounts = {}
-  const all: YearAmounts = {}
-  for (const r of rows) {
-    addYear(all, r.calendar_year, r.amount)
-    const b = blockOf(r)
-    if (b !== 'Non-Operating' && b !== 'UNMAPPED') addYear(operating, r.calendar_year, r.amount)
-  }
-  // The operating subtotal renders after the LAST operating block present
-  // (not every statement has Management Fees — venue pages often don't),
-  // and only when there are operating cost blocks at all (for unmapped
-  // entities "vóór non-operating" would just repeat Omzet).
   const present = BLOCK_ORDER.filter(b => byBlock.has(b))
-  const isOperating = (b: string) => b !== 'Non-Operating' && b !== 'UNMAPPED'
-  const lastOperating = [...present].reverse().find(isOperating)
-  const hasOperatingCosts = present.some(b => b !== 'Revenue' && isOperating(b))
+  // Ladder subtotals: cumulative running sum of the blocks rendered so far
+  // (BLOCK_ORDER is the ladder order, so each cut IS the USALI subtotal).
+  const subtotalAfter = new Map<string, string[]>() // block -> subtotal labels
+  for (const s of SUBTOTALS) {
+    const anchor = [...present].reverse().find(b => s.anchors.includes(b))
+    if (!anchor) continue
+    if (!subtotalAfter.has(anchor)) subtotalAfter.set(anchor, [])
+    subtotalAfter.get(anchor)!.push(s.label)
+  }
+  const running: YearAmounts = {}
+  const netIncome: YearAmounts = {}
+  for (const r of rows) addYear(netIncome, r.calendar_year, r.amount)
+
   return (
     <>
-      {present.map(b => (
-        <React.Fragment key={b}>
-          <StatementBlock block={b} rows={byBlock.get(b)!} indentBase={indentBase} dossier={dossier} drill={drill} />
-          {hasOperatingCosts && b === lastOperating && (
-            <tr key="op" className="border-t border-border/60">
-              <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>Resultaat vóór non-operating</td>
-              {YEARS.map(y => (
-                <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50"><Amount value={operating[y]} bold /></td>
-              ))}
-            </tr>
-          )}
-        </React.Fragment>
-      ))}
+      {present.map(b => {
+        for (const r of byBlock.get(b)!) addYear(running, r.calendar_year, r.amount)
+        const cum = { ...running }
+        return (
+          <React.Fragment key={b}>
+            <StatementBlock block={b} rows={byBlock.get(b)!} indentBase={indentBase} dossier={dossier} drill={drill} tor={tor} />
+            {(subtotalAfter.get(b) ?? []).map(label => (
+              <tr key={label} className="border-t border-border/60">
+                <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>{label}</td>
+                {YEARS.map(y => (
+                  <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50">
+                    <AmountPct value={cum[y]} tor={tor[y]} bold />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </React.Fragment>
+        )
+      })}
       <tr className="border-t-2 border-border/80">
-        <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>Resultaat</td>
+        <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>Net Income</td>
         {YEARS.map(y => (
-          <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50"><Amount value={all[y]} bold /></td>
+          <td key={y} className="px-3 py-1.5 text-right text-xs border-l border-border/50">
+            <AmountPct value={netIncome[y]} tor={tor[y]} bold />
+          </td>
         ))}
       </tr>
     </>

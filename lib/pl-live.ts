@@ -82,13 +82,30 @@ export const META_VENUES = ['UNALLOCATED', 'ALGEMEEN', 'INTRAGROUP']
 
 // Block assignment is presentation of the mapping's own output (dept +
 // line prefix + is_revenue flag from the views) — never re-classification.
+// The Non-Operating department splits into the USALI summary-ladder
+// buckets by the mapping's own line labels (D&A, Interest, Income Taxes;
+// the rest — rent, property taxes, insurance, other income — stays
+// Non-Operating Income & Expenses, per USALI).
 export function blockOf(r: Pick<PlEntityRow, 'is_revenue' | 'usali_department' | 'usali_line'>): string {
   if (r.is_revenue) return 'Revenue'
   if (r.usali_department === 'F&B' && r.usali_line.startsWith('Cost of Sales')) return 'Cost of Sales'
   if (r.usali_department === 'Payroll & Related') return 'Labour'
-  if (r.usali_department.startsWith('Undistributed') || r.usali_department === 'F&B') return 'Other Operating Expenses'
-  return r.usali_department // Management Fees | Non-Operating | UNMAPPED
+  if (r.usali_department.startsWith('Undistributed') || r.usali_department === 'F&B'
+      || r.usali_department === 'Rooms' || r.usali_department === 'Other Operated') {
+    return 'Other Operating Expenses' // non-revenue rows in operating depts
+  }
+  if (r.usali_department === 'Non-Operating') {
+    const l = r.usali_line
+    if (/depreciation|amorti|impairment/i.test(l)) return 'D&A'
+    if (/^interest/i.test(l)) return 'Interest'
+    if (/income tax|^tax regularisation$/i.test(l)) return 'Income Taxes'
+    return 'Non-Operating'
+  }
+  return r.usali_department // Management Fees | UNMAPPED
 }
+
+// Non-operating ladder buckets (everything below the operating result).
+export const NON_OPERATING_BLOCKS = ['Non-Operating', 'D&A', 'Interest', 'Income Taxes']
 
 // Display order for USALI departments (presentation only).
 const DEPT_ORDER = [

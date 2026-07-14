@@ -3,7 +3,9 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { VenueStatement } from '@/components/pl/venue-statement'
+import { PlCharts } from '@/components/charts/pl-charts'
 import { PlVenueRow, YEARS, VENUE_ENTITIES, entityName, venueName } from '@/lib/pl-live'
+import { PlMonthRow } from '@/lib/pl-charts-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,11 +29,16 @@ export default async function VenuePage({ params }: { params: Promise<{ dossier:
     .select('venue').eq('dossier_code', dossier).eq('venue', venue)
   if (!known || known.length === 0) notFound()
 
-  const parts = await Promise.all(YEARS.map(y =>
-    supabase.from('pl_venue').select('*')
-      .eq('dossier_code', dossier).eq('venue', venue).eq('calendar_year', y)
-  ))
+  const [monthPart, ...parts] = await Promise.all([
+    supabase.from('pl_venue_month').select('*')
+      .eq('dossier_code', dossier).eq('venue', venue).gte('month', '2023-01-01'),
+    ...YEARS.map(y =>
+      supabase.from('pl_venue').select('*')
+        .eq('dossier_code', dossier).eq('venue', venue).eq('calendar_year', y)
+    ),
+  ])
   const rows = parts.flatMap(p => (p.data ?? [])) as PlVenueRow[]
+  const monthRows = (monthPart.data ?? []) as PlMonthRow[]
 
   return (
     <main className="p-6 space-y-4">
@@ -47,6 +54,7 @@ export default async function VenuePage({ params }: { params: Promise<{ dossier:
           Niet-verdeelde groepskosten staan bij de entiteit onder “Unallocated”, niet hier.
         </p>
       </div>
+      <PlCharts name={venueName(venue)} entityRows={rows} monthRows={monthRows} />
       <Card>
         <CardHeader><CardTitle>USALI P&L — {venueName(venue)}</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">

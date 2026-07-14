@@ -3,7 +3,7 @@
 // percentages are display-only ratios of those sums. Nothing is estimated,
 // spread, or zero-filled — months or blocks without rows simply don't chart.
 
-import { PlEntityRow, blockOf } from './pl-live'
+import { PlEntityRow, blockOf, NON_OPERATING_BLOCKS } from './pl-live'
 
 /** Row from public.pl_month (adsolut.mv_pl_month, refreshed nightly). */
 export interface PlMonthRow {
@@ -111,9 +111,10 @@ export interface BlockSums {
   labour: number
   otherOpex: number
   mgmtFees: number
-  nonOperating: number
+  nonOperating: number // all ladder buckets below IBNOIE: non-op I&E, D&A, interest, income taxes
   unmapped: number
-  operatingResult: number // everything except Non-Operating and UNMAPPED
+  gop: number // revenue + CoS + labour + other expenses (before mgmt fees)
+  operatingResult: number // income before non-operating income & expenses
   result: number
   foodRevenue: number
   beverageRevenue: number
@@ -124,7 +125,7 @@ export interface BlockSums {
 export function blockSums(rows: PlEntityRow[], year: number): BlockSums {
   const s: BlockSums = {
     revenue: 0, costOfSales: 0, labour: 0, otherOpex: 0, mgmtFees: 0,
-    nonOperating: 0, unmapped: 0, operatingResult: 0, result: 0,
+    nonOperating: 0, unmapped: 0, gop: 0, operatingResult: 0, result: 0,
     foodRevenue: 0, beverageRevenue: 0, foodCost: 0, beverageCost: 0,
   }
   for (const r of rows) {
@@ -136,9 +137,9 @@ export function blockSums(rows: PlEntityRow[], year: number): BlockSums {
     else if (b === 'Labour') s.labour += r.amount
     else if (b === 'Other Operating Expenses') s.otherOpex += r.amount
     else if (b === 'Management Fees') s.mgmtFees += r.amount
-    else if (b === 'Non-Operating') s.nonOperating += r.amount
+    else if (NON_OPERATING_BLOCKS.includes(b)) s.nonOperating += r.amount
     else s.unmapped += r.amount
-    if (b !== 'Non-Operating' && b !== 'UNMAPPED') s.operatingResult += r.amount
+    if (!NON_OPERATING_BLOCKS.includes(b) && b !== 'UNMAPPED') s.operatingResult += r.amount
     if (r.usali_department === 'F&B') {
       if (r.is_revenue && r.usali_line.startsWith('Food Revenue')) s.foodRevenue += r.amount
       if (r.is_revenue && r.usali_line.startsWith('Beverage Revenue')) s.beverageRevenue += r.amount
@@ -146,6 +147,7 @@ export function blockSums(rows: PlEntityRow[], year: number): BlockSums {
       if (r.usali_line.startsWith('Cost of Sales — Beverage')) s.beverageCost += r.amount
     }
   }
+  s.gop = s.revenue + s.costOfSales + s.labour + s.otherOpex
   return s
 }
 
@@ -189,39 +191,41 @@ export interface WaterfallStep {
 
 const GREEN = '#16a34a', RED = '#dc2626', ORANGE = '#d97706', GOLD = '#b8962e'
 
-/** Omzet → blocks → Resultaat, using the statement's own block sums. */
+/** Revenue → USALI ladder → Net Income, using the statement's own block sums. */
 export function waterfallSteps(s: BlockSums): WaterfallStep[] {
   const steps: WaterfallStep[] = []
   let run = s.revenue
-  steps.push({ label: 'Omzet', start: 0, end: run, color: GOLD, kind: 'level' })
+  steps.push({ label: 'Revenue', start: 0, end: run, color: GOLD, kind: 'level' })
   if (Math.round(s.costOfSales) !== 0) {
     steps.push({ label: 'Cost of Sales', start: run, end: run + s.costOfSales, color: RED, kind: 'cost' })
     run += s.costOfSales
-    steps.push({ label: 'Brutomarge', start: 0, end: run, color: run >= 0 ? GREEN : RED, kind: 'level' })
+    steps.push({ label: 'Gross Profit', start: 0, end: run, color: run >= 0 ? GREEN : RED, kind: 'level' })
   }
   if (Math.round(s.labour) !== 0) {
-    steps.push({ label: 'Loon', start: run, end: run + s.labour, color: RED, kind: 'cost' })
+    steps.push({ label: 'Payroll', start: run, end: run + s.labour, color: RED, kind: 'cost' })
     run += s.labour
   }
   if (Math.round(s.otherOpex) !== 0) {
-    steps.push({ label: 'Overige kosten', start: run, end: run + s.otherOpex, color: ORANGE, kind: 'cost' })
+    steps.push({ label: 'Other Exp.', start: run, end: run + s.otherOpex, color: ORANGE, kind: 'cost' })
     run += s.otherOpex
+  }
+  if (Math.round(s.labour) !== 0 || Math.round(s.otherOpex) !== 0) {
+    steps.push({ label: 'GOP', start: 0, end: s.gop, color: s.gop >= 0 ? GREEN : RED, kind: 'level' })
+    run = s.gop
   }
   if (Math.round(s.mgmtFees) !== 0) {
     steps.push({ label: 'Mgmt fees', start: run, end: run + s.mgmtFees, color: ORANGE, kind: 'cost' })
     run += s.mgmtFees
   }
-  steps.push({ label: 'Operationeel', start: 0, end: s.operatingResult, color: s.operatingResult >= 0 ? GREEN : RED, kind: 'level' })
-  run = s.operatingResult
   if (Math.round(s.nonOperating) !== 0) {
-    steps.push({ label: 'Non-operating', start: run, end: run + s.nonOperating, color: ORANGE, kind: 'cost' })
+    steps.push({ label: 'Non-Op (net)', start: run, end: run + s.nonOperating, color: ORANGE, kind: 'cost' })
     run += s.nonOperating
   }
   if (Math.round(s.unmapped) !== 0) {
     steps.push({ label: 'Niet gemapt', start: run, end: run + s.unmapped, color: ORANGE, kind: 'cost' })
     run += s.unmapped
   }
-  steps.push({ label: 'Resultaat', start: 0, end: s.result, color: s.result >= 0 ? GREEN : RED, kind: 'level' })
+  steps.push({ label: 'Net Income', start: 0, end: s.result, color: s.result >= 0 ? GREEN : RED, kind: 'level' })
   return steps
 }
 
