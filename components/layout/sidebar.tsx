@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Building2, LogOut, ChevronDown, ChevronRight, Layers, ReceiptText, Package } from 'lucide-react'
+import { Building2, LogOut, ChevronDown, ChevronRight, Layers, ReceiptText, Package, ArrowLeftRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { UserProfile } from '@/lib/types'
@@ -112,6 +112,15 @@ export function Sidebar({ profile, dossiers, venuesByDossier }: SidebarProps) {
           )}>
             <Package size={15} />
             Artikelen
+          </Link>
+        )}
+        {canSeePnl && (
+          <Link href="/compare" className={cn(
+            'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+            pathname === '/compare' ? 'bg-gold/10 text-gold font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+          )}>
+            <ArrowLeftRight size={15} />
+            Vergelijk
           </Link>
         )}
         {!canSeePnl && (

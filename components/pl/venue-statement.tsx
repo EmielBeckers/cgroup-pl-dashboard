@@ -3,10 +3,10 @@
 import { LiveStatement } from '@/components/pl/group-table'
 import { PlVenueRow, YEARS } from '@/lib/pl-live'
 
-// Statement table for a single venue. Invoice drill stays off here: the
-// drill RPC works per entity P&L line, not per venue — showing entity-wide
-// invoices under a venue line would overstate coverage.
-export function VenueStatement({ rows, dossier }: { rows: PlVenueRow[]; dossier: string }) {
+// Statement table for a single venue, WITH venue-scoped invoice drill
+// (pl_venue_line_invoices mirrors the venue view's blanpla+rules
+// attribution; multi-venue invoices show "venue-deel van totaal").
+export function VenueStatement({ rows, dossier, venue }: { rows: PlVenueRow[]; dossier: string; venue: string }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -19,12 +19,13 @@ export function VenueStatement({ rows, dossier }: { rows: PlVenueRow[]; dossier:
           </tr>
         </thead>
         <tbody>
-          <LiveStatement rows={rows} dossier={dossier} drill={false} indentBase="pl-4" />
+          <LiveStatement rows={rows} dossier={dossier} indentBase="pl-4" venue={venue} />
         </tbody>
       </table>
       <p className="px-3 py-3 text-[11px] text-text-faint">
         Detail verschijnt enkel waar echte gemapte rekeningen met activiteit bestaan.
-        Factuur-drilldown is beschikbaar op entiteitsniveau (per P&L-lijn, niet per venue).
+        De factuur-drill toont het deel dat aan deze venue is toegewezen; bij facturen
+        die over meerdere venues verdeeld zijn staat het volledige lijnbedrag ernaast.
       </p>
     </div>
   )

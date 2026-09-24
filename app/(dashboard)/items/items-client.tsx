@@ -32,6 +32,7 @@ interface PriceRow {
   invoice_date: string; quantity: number | null; unit_code: string | null
   unit_norm: string; base_quantity: number | null; price_amount: number | null
   line_amount: number | null; unit_price: number | null
+  bllever_id: number | null; invoice_number: string | null; pdf_doc_id: number | null
 }
 interface Group { id: number; name: string; base_unit: string; notes: string | null }
 interface GroupItem { group_id: number; item_key: string; unit_factor: number | null }
@@ -43,7 +44,10 @@ function fmtPrice(v: number | null | undefined) {
 
 /* ------------------------------------------------- price history chart -- */
 
-function PriceChart({ series }: { series: { name: string; points: { date: string; value: number }[] }[] }) {
+function PriceChart({ series, onPointClick }: {
+  series: { name: string; points: { date: string; value: number }[] }[]
+  onPointClick?: (date: string) => void
+}) {
   const dates = Array.from(new Set(series.flatMap(s => s.points.map(p => p.date)))).sort()
   const data = dates.map(d => {
     const row: Record<string, string | number | null> = { date: d }
@@ -53,7 +57,9 @@ function PriceChart({ series }: { series: { name: string; points: { date: string
   if (data.length === 0) return null
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+        onClick={(st) => { const l = (st as { activeLabel?: string } | null)?.activeLabel; if (l && onPointClick) onPointClick(l) }}
+        style={onPointClick ? { cursor: 'pointer' } : undefined}>
         <CartesianGrid stroke="#e5e0d8" strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="date" tick={{ fill: '#6b6560', fontSize: 10 }} axisLine={{ stroke: '#e5e0d8' }} tickLine={false} />
         <YAxis tick={{ fill: '#a09890', fontSize: 10 }} axisLine={false} tickLine={false}
@@ -84,24 +90,40 @@ function ItemDetail({ item, groups, onAddToGroup }: {
   const [groupId, setGroupId] = useState('')
   const [factor, setFactor] = useState('')
   const [busy, setBusy] = useState(false)
+  const [picked, setPicked] = useState<string | null>(null) // chart-clicked date
+  const [yearFrom, setYearFrom] = useState('')
+  const [yearTo, setYearTo] = useState('')
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     let alive = true
     createClient().from('item_prices').select('*')
-      .eq('item_key', item.item_key).order('invoice_date', { ascending: true }).limit(1000)
+      .eq('item_key', item.item_key).order('invoice_date', { ascending: true }).limit(5000)
       .then(({ data }) => { if (alive) setPrices((data ?? []) as PriceRow[]) })
     return () => { alive = false }
   }, [item.item_key])
 
+  const years = useMemo(() =>
+    Array.from(new Set((prices ?? []).map(p => p.invoice_date?.slice(0, 4)).filter(Boolean))).sort() as string[],
+  [prices])
+  const filtered = useMemo(() => (prices ?? []).filter(p => {
+    const y = p.invoice_date?.slice(0, 4) ?? ''
+    return (!yearFrom || y >= yearFrom) && (!yearTo || y <= yearTo)
+  }), [prices, yearFrom, yearTo])
+
   const byUnit = useMemo(() => {
     const m = new Map<string, PriceRow[]>()
-    for (const p of prices ?? []) {
+    for (const p of filtered) {
       if (p.unit_price == null) continue
       if (!m.has(p.unit_norm)) m.set(p.unit_norm, [])
       m.get(p.unit_norm)!.push(p)
     }
     return m
-  }, [prices])
+  }, [filtered])
+
+  const pickedRows = useMemo(() =>
+    picked ? filtered.filter(p => p.invoice_date === picked) : [],
+  [picked, filtered])
 
   return (
     <div className="rounded border border-border bg-surface-raised/30 p-3 text-[11px] space-y-3">
@@ -117,39 +139,97 @@ function ItemDetail({ item, groups, onAddToGroup }: {
         <div key={unit}>
           <p className="text-[10px] uppercase tracking-widest text-text-faint mb-1">
             Prijs per {unit === 'onbekend' ? 'factuureenheid (eenheid onbekend)' : unit}
+            <span className="ml-2 normal-case tracking-normal">— klik een punt voor de factuur</span>
           </p>
-          <PriceChart series={[{
-            name: unit,
-            points: rows.map(r => ({ date: r.invoice_date, value: Number(r.unit_price) })),
-          }]} />
+          <PriceChart
+            series={[{
+              name: unit,
+              points: rows.map(r => ({ date: r.invoice_date, value: Number(r.unit_price) })),
+            }]}
+            onPointClick={d => setPicked(p => p === d ? null : d)}
+          />
         </div>
       ))}
+      {picked && pickedRows.length > 0 && (
+        <div className="rounded border border-gold/40 bg-gold/5 px-3 py-2 space-y-1">
+          <p className="text-[10px] uppercase tracking-widest text-text-faint">
+            Aankoop {picked}
+            <button onClick={() => setPicked(null)} className="ml-2 text-text-faint hover:text-text normal-case">× sluit</button>
+          </p>
+          {pickedRows.map(p => (
+            <div key={`${p.doc_id}-${p.line_no}`} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className="text-text">{item.supplier_name ?? '—'}</span>
+              <span className="text-text-muted">{entityName(p.dossier_code)}</span>
+              <span className="text-text-muted">factuur {p.invoice_number ?? '—'}</span>
+              <span>{p.quantity ?? '—'} × {fmtPrice(p.unit_price)} / {p.unit_norm}</span>
+              <span className="text-text-muted">lijn {p.line_amount != null ? formatCurrency(Number(p.line_amount)) : '—'}</span>
+              {p.pdf_doc_id
+                ? <a href={`/api/invoice-pdf?dossier=${p.dossier_code}&doc=${p.pdf_doc_id}`} target="_blank" rel="noreferrer"
+                     className="text-gold hover:underline">PDF</a>
+                : <span className="text-text-faint">geen PDF</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {prices && prices.length > 0 && (
         <div className="overflow-x-auto">
+          <div className="flex items-end gap-2 mb-1">
+            <label className="flex flex-col gap-0.5 text-[9px] uppercase tracking-widest text-text-faint">
+              Van jaar
+              <select value={yearFrom} onChange={e => setYearFrom(e.target.value)}
+                      className="bg-surface border border-border rounded px-1.5 py-0.5 text-[11px] text-text">
+                <option value="">alle</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-[9px] uppercase tracking-widest text-text-faint">
+              Tot jaar
+              <select value={yearTo} onChange={e => setYearTo(e.target.value)}
+                      className="bg-surface border border-border rounded px-1.5 py-0.5 text-[11px] text-text">
+                <option value="">alle</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <span className="text-[10px] text-text-faint pb-1">{filtered.length} aankopen in bereik</span>
+          </div>
           <table className="w-full text-[10px]">
             <thead>
               <tr className="text-text-faint uppercase tracking-widest">
                 <td className="py-1 pr-2">Datum</td><td className="py-1 pr-2">Entiteit</td>
+                <td className="py-1 pr-2">Factuur</td>
                 <td className="py-1 pr-2 text-right">Aantal</td><td className="py-1 pr-2">Eenheid</td>
                 <td className="py-1 pr-2 text-right">Per hoeveel</td>
-                <td className="py-1 pr-2 text-right">Eenheidsprijs</td><td className="py-1 text-right">Lijntotaal</td>
+                <td className="py-1 pr-2 text-right">Eenheidsprijs</td><td className="py-1 pr-2 text-right">Lijntotaal</td>
+                <td className="py-1 text-right">PDF</td>
               </tr>
             </thead>
             <tbody>
-              {prices.slice().reverse().slice(0, 40).map(p => (
-                <tr key={`${p.doc_id}-${p.line_no}`} className="border-t border-border/40">
+              {filtered.slice().reverse().slice(0, showAll ? undefined : 40).map(p => (
+                <tr key={`${p.doc_id}-${p.line_no}`}
+                    className={cn('border-t border-border/40', picked === p.invoice_date && 'bg-gold/5')}>
                   <td className="py-0.5 pr-2 whitespace-nowrap text-text-muted">{p.invoice_date}</td>
                   <td className="py-0.5 pr-2 text-text-muted">{entityName(p.dossier_code)}</td>
+                  <td className="py-0.5 pr-2 text-text-faint max-w-28 truncate">{p.invoice_number ?? '—'}</td>
                   <td className="py-0.5 pr-2 text-right">{p.quantity ?? '—'}</td>
                   <td className="py-0.5 pr-2">{p.unit_norm}{p.unit_norm === 'onbekend' && p.unit_code ? ` (${p.unit_code})` : ''}</td>
                   <td className="py-0.5 pr-2 text-right">{p.base_quantity ?? 1}</td>
                   <td className="py-0.5 pr-2 text-right text-text">{fmtPrice(p.unit_price)}</td>
-                  <td className="py-0.5 text-right text-text-muted">{p.line_amount != null ? formatCurrency(Number(p.line_amount)) : '—'}</td>
+                  <td className="py-0.5 pr-2 text-right text-text-muted">{p.line_amount != null ? formatCurrency(Number(p.line_amount)) : '—'}</td>
+                  <td className="py-0.5 text-right">
+                    {p.pdf_doc_id
+                      ? <a href={`/api/invoice-pdf?dossier=${p.dossier_code}&doc=${p.pdf_doc_id}`} target="_blank" rel="noreferrer"
+                           className="text-gold hover:underline">PDF</a>
+                      : <span className="text-text-faint">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {prices.length > 40 && <p className="text-text-faint mt-1">Laatste 40 van {prices.length} aankopen getoond.</p>}
+          {filtered.length > 40 && !showAll && (
+            <button onClick={() => setShowAll(true)} className="text-gold hover:underline mt-1 text-[10px]">
+              Toon alle {filtered.length} aankopen
+            </button>
+          )}
         </div>
       )}
       <div className="flex items-end gap-2 border-t border-border/50 pt-2">

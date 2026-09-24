@@ -50,6 +50,7 @@ export const HOTEL_ENTITIES = ['HASHOTEL', 'CENTURY']
 
 // Display names only — never used for matching or math.
 export const ENTITY_NAMES: Record<string, string> = {
+  CGROUP: 'C.Group (holding)',
   CUSTOMIZZE: 'Customizze',
   GREENVALLEY: 'Green Valley',
   BLUEOCEAN: 'Blue Ocean',

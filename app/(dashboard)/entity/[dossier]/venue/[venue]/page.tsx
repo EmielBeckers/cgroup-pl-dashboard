@@ -58,7 +58,7 @@ export default async function VenuePage({ params }: { params: Promise<{ dossier:
       <Card>
         <CardHeader><CardTitle>USALI P&L — {venueName(venue)}</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">
-          <VenueStatement rows={rows} dossier={dossier} />
+          <VenueStatement rows={rows} dossier={dossier} venue={venue} />
         </CardContent>
       </Card>
     </main>

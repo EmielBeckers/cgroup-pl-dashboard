@@ -342,13 +342,17 @@ interface InvoiceRow {
   invoice_date: string | null; invoice_total: number | null; gl_amount: number
   gl_entries: number; ubl_doc_id: number | null; ubl_status: string | null; ubl_line_count: number | null
   pdf_doc_id: number | null
+  // venue-scoped drill only: the invoice's FULL amount on this line, shown
+  // next to the venue-attributed gl_amount when they differ (multi-venue
+  // invoices must never pretend to belong to one venue).
+  line_amount?: number | null
 }
 interface UblLine {
   line_no: number; description: string | null; item_name: string | null; quantity: number | null
   unit_code: string | null; price_amount: number | null; line_amount: number | null; vat_percent: number | null
 }
 
-function InvoiceDrill({ dossier, department, line }: { dossier: string; department: string; line: string }) {
+function InvoiceDrill({ dossier, department, line, venue }: { dossier: string; department: string; line: string; venue?: string }) {
   const [year, setYear] = useState<number>(2025)
   const [rows, setRows] = useState<InvoiceRow[] | null>(null)
   const [ublFor, setUblFor] = useState<number | null>(null)
@@ -357,10 +361,16 @@ function InvoiceDrill({ dossier, department, line }: { dossier: string; departme
   React.useEffect(() => {
     let alive = true
     setRows(null)
-    createClient().rpc('pl_line_invoices', { p_dossier: dossier, p_department: department, p_line: line, p_year: year })
-      .then(({ data }) => { if (alive) setRows((data ?? []) as InvoiceRow[]) })
+    const supabase = createClient()
+    const call = venue
+      ? supabase.rpc('pl_venue_line_invoices', { p_dossier: dossier, p_venue: venue, p_department: department, p_line: line, p_year: year })
+          .then(({ data }) => (data as (InvoiceRow & { venue_amount: number })[] | null ?? [])
+            .map(r => ({ ...r, gl_amount: r.venue_amount })))
+      : supabase.rpc('pl_line_invoices', { p_dossier: dossier, p_department: department, p_line: line, p_year: year })
+          .then(({ data }) => (data ?? []) as InvoiceRow[])
+    call.then(r => { if (alive) setRows(r) })
     return () => { alive = false }
-  }, [dossier, department, line, year])
+  }, [dossier, department, line, year, venue])
 
   async function toggleUbl(docId: number) {
     setUblFor(u => u === docId ? null : docId)
@@ -411,6 +421,11 @@ function InvoiceDrill({ dossier, department, line }: { dossier: string; departme
                 <span className="w-28 text-text-faint truncate">{r.invoice_number ?? '—'}</span>
                 <span className="w-20 text-text-faint">{r.invoice_date ?? '—'}</span>
                 <span className="w-24 text-right"><Amount value={Number(r.gl_amount)} /></span>
+                {venue && r.line_amount != null && Math.abs(Number(r.line_amount) - Number(r.gl_amount)) >= 0.01 && (
+                  <span className="w-28 text-right text-amber-800" title="Factuur verdeeld over meerdere venues — dit is enkel het deel van deze venue">
+                    van {formatCurrency(Number(r.line_amount))}
+                  </span>
+                )}
                 <span className="w-32 text-right text-text-faint">factuur {r.invoice_total != null ? formatCurrency(Number(r.invoice_total)) : '—'} incl. btw</span>
                 {r.ubl_line_count
                   ? <button onClick={() => toggleUbl(r.ubl_doc_id!)} className="text-gold hover:underline">{r.ubl_line_count} lijnen</button>
@@ -448,7 +463,7 @@ function InvoiceDrill({ dossier, department, line }: { dossier: string; departme
   )
 }
 
-function StatementBlock({ block, rows, indentBase, dossier, drill = true, tor }: { block: string; rows: PlEntityRow[]; indentBase: string; dossier: string; drill?: boolean; tor: YearAmounts }) {
+function StatementBlock({ block, rows, indentBase, dossier, drill = true, tor, venue }: { block: string; rows: PlEntityRow[]; indentBase: string; dossier: string; drill?: boolean; tor: YearAmounts; venue?: string }) {
   // Blocks unfold by default (one level deeper); the invoice drill under
   // each line stays collapsed.
   const [open, setOpen] = useState(true)
@@ -499,14 +514,14 @@ function StatementBlock({ block, rows, indentBase, dossier, drill = true, tor }:
               <td key={y} className="px-3 py-1 text-right text-[11px] border-l border-border/50"><AmountPct value={e.ya[y]} tor={tor[y]} /></td>
             ))}
           </tr>
-          {drillLine === sub && <InvoiceDrill dossier={dossier} department={e.dept} line={e.line} />}
+          {drillLine === sub && <InvoiceDrill dossier={dossier} department={e.dept} line={e.line} venue={venue} />}
         </React.Fragment>
       ))}
     </>
   )
 }
 
-export function LiveStatement({ rows, dossier, drill = true, indentBase = 'pl-10' }: { rows: PlEntityRow[]; dossier: string; drill?: boolean; indentBase?: string }) {
+export function LiveStatement({ rows, dossier, drill = true, indentBase = 'pl-10', venue }: { rows: PlEntityRow[]; dossier: string; drill?: boolean; indentBase?: string; venue?: string }) {
   const byBlock = new Map<string, PlEntityRow[]>()
   const tor: YearAmounts = {} // Total Operating Revenue — denominator of the % column
   for (const r of rows) {
@@ -536,7 +551,7 @@ export function LiveStatement({ rows, dossier, drill = true, indentBase = 'pl-10
         const cum = { ...running }
         return (
           <React.Fragment key={b}>
-            <StatementBlock block={b} rows={byBlock.get(b)!} indentBase={indentBase} dossier={dossier} drill={drill} tor={tor} />
+            <StatementBlock block={b} rows={byBlock.get(b)!} indentBase={indentBase} dossier={dossier} drill={drill} tor={tor} venue={venue} />
             {(subtotalAfter.get(b) ?? []).map(label => (
               <tr key={label} className="border-t border-border/60">
                 <td className={cn(indentBase, 'pr-3 py-1.5 text-xs font-semibold text-text')}>{label}</td>
