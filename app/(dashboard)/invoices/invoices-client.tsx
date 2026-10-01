@@ -13,6 +13,16 @@ import { entityName } from '@/lib/pl-live'
 
 const PAGE_SIZE = 50
 const DEFAULT_FROM = '2026-01-01'
+const TODAY = new Date().toISOString().slice(0, 10)
+
+// Sort options — "upcoming" sorts by due date from the nearest onward.
+const SORTS = {
+  date_desc: { label: 'Datum — nieuwste eerst' },
+  date_asc: { label: 'Datum — oudste eerst' },
+  due_next: { label: 'Vervaldatum — eerstvolgend' },
+  amount_desc: { label: 'Bedrag — hoog naar laag' },
+} as const
+type SortKey = keyof typeof SORTS
 
 interface InvoiceRow {
   dossier_code: string
@@ -27,6 +37,7 @@ interface InvoiceRow {
   ubl_status: string | null
   ubl_line_count: number | null
   pdf_doc_id: number | null
+  pdf_doc_ids: number[] | null // ALL linked scans — a booking can carry several
 }
 
 interface Summary { invoice_count: number; total_eur: number; with_edoc: number; with_lines: number }
@@ -45,30 +56,53 @@ interface Filters {
   max: string
 }
 
-const EMPTY_FILTERS: Filters = { dossier: '', supplier: '', from: DEFAULT_FROM, to: '', min: '', max: '' }
+// Default window ends TODAY: the ~40 mistyped future dates and the year-end
+// EJ accruals (all dated 31/12) otherwise bury the first screen. Nothing is
+// hidden silently — a visible chip reports the count and shows them on click.
+const EMPTY_FILTERS: Filters = { dossier: '', supplier: '', from: DEFAULT_FROM, to: TODAY, min: '', max: '' }
 
 export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS)
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS)
   const [page, setPage] = useState(0)
+  const [sort, setSort] = useState<SortKey>('date_desc')
   const [rows, setRows] = useState<InvoiceRow[] | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [futureCount, setFutureCount] = useState<number | null>(null)
   const [ublFor, setUblFor] = useState<string | null>(null) // `${dossier}:${docId}`
   const [ublLines, setUblLines] = useState<Record<string, UblLine[]>>({})
 
-  const load = useCallback(async (f: Filters, p: number) => {
+  const load = useCallback(async (f: Filters, p: number, s: SortKey) => {
     setRows(null)
     const supabase = createClient()
-    let q = supabase.from('invoices').select('*')
-    if (f.dossier) q = q.eq('dossier_code', f.dossier)
-    if (f.supplier.trim()) q = q.ilike('supplier', `%${f.supplier.trim()}%`)
+    const base = () => {
+      let q = supabase.from('invoices').select('*')
+      if (f.dossier) q = q.eq('dossier_code', f.dossier)
+      if (f.supplier.trim()) q = q.ilike('supplier', `%${f.supplier.trim()}%`)
+      if (f.min !== '') q = q.gte('total_incl_vat', Number(f.min))
+      if (f.max !== '') q = q.lte('total_incl_vat', Number(f.max))
+      return q
+    }
+    let q = base()
     if (f.from) q = q.gte('invoice_date', f.from)
     if (f.to) q = q.lte('invoice_date', f.to)
-    if (f.min !== '') q = q.gte('total_incl_vat', Number(f.min))
-    if (f.max !== '') q = q.lte('total_incl_vat', Number(f.max))
-    const [rowsRes, sumRes] = await Promise.all([
-      q.order('invoice_date', { ascending: false }).order('id', { ascending: false })
-        .range(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE - 1),
+    if (s === 'date_desc') q = q.order('invoice_date', { ascending: false }).order('id', { ascending: false })
+    else if (s === 'date_asc') q = q.order('invoice_date', { ascending: true }).order('id', { ascending: true })
+    else if (s === 'due_next') q = q.order('due_date', { ascending: true, nullsFirst: false }).order('invoice_date', { ascending: true })
+    else q = q.order('total_incl_vat', { ascending: false })
+    // visible honesty chip: how many future-dated bookings (same entity/
+    // supplier/amount filters) fall outside the window?
+    let futureQ: PromiseLike<number | null> = Promise.resolve(null)
+    if (f.to) {
+      let fq = supabase.from('invoices').select('id', { count: 'exact', head: true })
+      if (f.dossier) fq = fq.eq('dossier_code', f.dossier)
+      if (f.supplier.trim()) fq = fq.ilike('supplier', `%${f.supplier.trim()}%`)
+      if (f.min !== '') fq = fq.gte('total_incl_vat', Number(f.min))
+      if (f.max !== '') fq = fq.lte('total_incl_vat', Number(f.max))
+      futureQ = fq.gt('invoice_date', f.to).then(r => r.count ?? 0)
+    }
+    const [rowsRes, sumRes, fut] = await Promise.all([
+      q.range(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE - 1),
       p === 0 || summary === null
         ? supabase.rpc('invoices_summary', {
             p_dossier: f.dossier || null,
@@ -79,15 +113,17 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
             p_max: f.max === '' ? null : Number(f.max),
           })
         : Promise.resolve(null),
+      futureQ,
     ])
     setRows((rowsRes.data ?? []) as InvoiceRow[])
+    setFutureCount(fut)
     if (sumRes) {
-      const s = (sumRes.data as Summary[] | null)?.[0]
-      if (s) setSummary(s)
+      const s2 = (sumRes.data as Summary[] | null)?.[0]
+      if (s2) setSummary(s2)
     }
   }, [summary])
 
-  useEffect(() => { load(applied, page) }, [applied, page]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(applied, page, sort) }, [applied, page, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function apply(e: React.FormEvent) {
     e.preventDefault()
@@ -97,11 +133,19 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
   }
 
   function clear() {
-    const empty = { ...EMPTY_FILTERS, from: '' }
+    const empty = { ...EMPTY_FILTERS, from: '', to: '' }
     setDraft(empty)
     setSummary(null)
     setPage(0)
     setApplied(empty)
+  }
+
+  function showFuture() {
+    const next = { ...applied, to: '' }
+    setDraft(d => ({ ...d, to: '' }))
+    setSummary(null)
+    setPage(0)
+    setApplied(next)
   }
 
   async function toggleUbl(dossier: string, docId: number) {
@@ -146,6 +190,12 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
           Max €
           <input type="number" step="0.01" value={draft.max} onChange={e => setDraft(d => ({ ...d, max: e.target.value }))} className={inputCls} />
         </label>
+        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-text-faint">
+          Sorteer
+          <select value={sort} onChange={e => { setPage(0); setSort(e.target.value as SortKey) }} className={inputCls}>
+            {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </label>
         <div className="flex gap-2">
           <button type="submit" className="px-3 py-1.5 rounded-md text-xs border border-gold text-gold bg-gold/10 hover:bg-gold/20 transition-colors">Filter</button>
           <button type="button" onClick={clear} className="px-2 py-1.5 rounded-md text-xs border border-border text-text-muted hover:text-text transition-colors">Wis</button>
@@ -162,6 +212,13 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
                 {' · '}{summary.with_lines.toLocaleString('nl-BE')} met lijndetail
               </>
             : 'Totalen laden…'}
+          {futureCount != null && futureCount > 0 && (
+            <button onClick={showFuture}
+              className="ml-3 inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 hover:bg-amber-100"
+              title="Boekingen met factuurdatum na vandaag (datumtypo's en eindejaars-EJ-boekingen) vallen buiten het standaardvenster">
+              {futureCount.toLocaleString('nl-BE')} toekomstig gedateerde boekingen verborgen — toon ze
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -208,9 +265,14 @@ export function InvoicesClient({ dossiers }: { dossiers: string[] }) {
                             : <span className="text-text-faint">geen</span>}
                       </td>
                       <td className="px-3 py-1.5 whitespace-nowrap">
-                        {r.pdf_doc_id
-                          ? <a href={`/api/invoice-pdf?dossier=${r.dossier_code}&doc=${r.pdf_doc_id}`}
-                               target="_blank" rel="noreferrer" className="text-gold hover:underline">PDF</a>
+                        {r.pdf_doc_ids && r.pdf_doc_ids.length > 0
+                          ? r.pdf_doc_ids.map((d, i) => (
+                              <a key={d} href={`/api/invoice-pdf?dossier=${r.dossier_code}&doc=${d}`}
+                                 target="_blank" rel="noreferrer" className="text-gold hover:underline mr-1.5"
+                                 title={r.pdf_doc_ids!.length > 1 ? `Scan ${i + 1} van ${r.pdf_doc_ids!.length} — meerdere documenten aan deze boeking gekoppeld` : undefined}>
+                                PDF{r.pdf_doc_ids!.length > 1 ? ` ${i + 1}` : ''}
+                              </a>
+                            ))
                           : <span className="text-text-faint">—</span>}
                       </td>
                     </tr>

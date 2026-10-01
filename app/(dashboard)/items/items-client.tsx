@@ -135,21 +135,43 @@ function ItemDetail({ item, groups, onAddToGroup }: {
           de historiek is per eenheid gesplitst; prijzen over eenheden heen zijn niet vergelijkbaar.
         </p>
       )}
-      {prices && Array.from(byUnit.entries()).map(([unit, rows]) => (
-        <div key={unit}>
-          <p className="text-[10px] uppercase tracking-widest text-text-faint mb-1">
-            Prijs per {unit === 'onbekend' ? 'factuureenheid (eenheid onbekend)' : unit}
-            <span className="ml-2 normal-case tracking-normal">— klik een punt voor de factuur</span>
-          </p>
-          <PriceChart
-            series={[{
-              name: unit,
-              points: rows.map(r => ({ date: r.invoice_date, value: Number(r.unit_price) })),
-            }]}
-            onPointClick={d => setPicked(p => p === d ? null : d)}
-          />
-        </div>
-      ))}
+      {prices && Array.from(byUnit.entries()).map(([unit, rows]) => {
+        // Same unit code can hide different PACKAGING sizes (e.g. Bidfood
+        // bills a case AND a single unit both as H87 "stuk", ~€93 vs ~€8,
+        // sometimes on the same day). We never invent a conversion — when
+        // the spread exceeds 1.5x we draw the day's lowest and highest
+        // purchase as separate lines and say why.
+        const vals = rows.map(r => Number(r.unit_price)).filter(v => v > 0)
+        const spread = vals.length > 1 ? Math.max(...vals) / Math.min(...vals) : 1
+        const byDate = new Map<string, number[]>()
+        for (const r of rows) {
+          if (!byDate.has(r.invoice_date)) byDate.set(r.invoice_date, [])
+          byDate.get(r.invoice_date)!.push(Number(r.unit_price))
+        }
+        const series = spread > 1.5
+          ? [
+              { name: 'laagste aankoop', points: Array.from(byDate, ([d, v]) => ({ date: d, value: Math.min(...v) })) },
+              { name: 'hoogste aankoop', points: Array.from(byDate, ([d, v]) => ({ date: d, value: Math.max(...v) })) },
+            ]
+          : [{ name: unit, points: rows.map(r => ({ date: r.invoice_date, value: Number(r.unit_price) })) }]
+        return (
+          <div key={unit}>
+            <p className="text-[10px] uppercase tracking-widest text-text-faint mb-1">
+              Prijs per {unit === 'onbekend' ? 'factuureenheid (eenheid onbekend)' : unit}
+              <span className="ml-2 normal-case tracking-normal">— klik een punt voor de factuur</span>
+            </p>
+            {spread > 1.5 && (
+              <p className="flex items-center gap-1.5 text-amber-800 bg-amber-50 border border-amber-300 rounded px-2 py-1 mb-1">
+                <Info size={11} />
+                Deze leverancier factureert dit artikel in wisselende verpakkingsgroottes onder dezelfde
+                eenheidscode (±{fmtPrice(Math.min(...vals))} en ±{fmtPrice(Math.max(...vals))}, soms op dezelfde dag) —
+                dit is geen prijsschommeling. Vergelijk via een productgroep met eenheidsfactor.
+              </p>
+            )}
+            <PriceChart series={series} onPointClick={d => setPicked(p => p === d ? null : d)} />
+          </div>
+        )
+      })}
       {picked && pickedRows.length > 0 && (
         <div className="rounded border border-gold/40 bg-gold/5 px-3 py-2 space-y-1">
           <p className="text-[10px] uppercase tracking-widest text-text-faint">
