@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { AdoptionTrend } from './adoption-trend'
 import { RecentTransactions } from './recent-transactions'
+import { TopColleagues } from './top-colleagues'
 import { TxTable } from './tx-table'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,8 @@ export const dynamic = 'force-dynamic'
 // Trivec). BOARD ONLY: this is per-person data about colleagues, so managers
 // and accounting never see it. Data: SDWorx hr_sync.v_discount_* views via the
 // read-only role in lib/hr-db.ts. Every figure is read from a view; nothing is
-// estimated, and the ticket amount is shown only "as posted".
+// estimated. "Betaald" = what the colleague paid after discount; no gross or
+// discount euros are derived (drinks are full price on the same ticket).
 export default async function StaffDiscountPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -53,15 +55,20 @@ export default async function StaffDiscountPage() {
       ) : (
         <>
           <AdoptionSection data={data} />
+          <Card>
+            <CardHeader><CardTitle>2 · Top collega’s · sinds lancering</CardTitle></CardHeader>
+            <CardContent>
+              <TopColleagues rows={data.colleagues} />
+            </CardContent>
+          </Card>
           <ViolationsSection data={data} />
           <PerVenueSection data={data} />
           <Card>
-            <CardHeader><CardTitle>Recente transacties · laatste 30 dagen</CardTitle></CardHeader>
+            <CardHeader><CardTitle>5 · Recente transacties · laatste 30 dagen</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <RecentTransactions rows={data.recent} />
               <p className="text-[11px] text-text-faint">
-                * Bedrag zoals Trivec het aan Leat doorgeeft. Of dit vóór of na de 25% korting is, is nog niet bevestigd;
-                daarom wordt er geen kortingsbedrag berekend.
+                Betaald = wat de collega betaalde, na korting. Het kortingsbedrag wordt niet door Trivec doorgegeven.
                 {data.recentNotCounted > 0 && <> {data.recentNotCounted} teruggedraaide of pre-launch registratie(s) in deze periode tellen niet mee.</>}
               </p>
             </CardContent>
@@ -74,10 +81,14 @@ export default async function StaffDiscountPage() {
 }
 
 const pct = (v: number | null) => v == null ? '—' : `${v.toLocaleString('nl-BE', { maximumFractionDigits: 1 })}%`
+const eur = (v: number | null) => v == null ? '—' : `€ ${v.toLocaleString('nl-BE', { maximumFractionDigits: 0 })}`
+// Share of a count, one decimal (counts only; never applied to amounts).
+const share = (n: number, d: number) => d > 0 ? Math.round((1000 * n) / d) / 10 : null
 
 /* ---------------------------------------------------------------- 1. adoption */
 
 function AdoptionSection({ data }: { data: StaffDiscountData }) {
+  const k = data.kpis
   const weeks = Array.from(new Set(data.adoption.map(r => r.week_start))).sort()
   const latest = weeks[weeks.length - 1]
   const all = data.adoption.filter(r => r.employer_code === 'ALL')
@@ -90,16 +101,17 @@ function AdoptionSection({ data }: { data: StaffDiscountData }) {
     <Card>
       <CardHeader><CardTitle>1 · Gebruik</CardTitle></CardHeader>
       <CardContent className="space-y-5">
-        {now ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Stat label="Ooit gebruikt" value={pct(now.used_cumulative_pct)}
-                  sub={`${now.used_cumulative_count} van ${now.eligible_count} collega’s`} />
-            <Stat label={`Gebruik ${now.iso_week}`} value={String(now.used_in_week_count)} sub="collega’s deze week" />
-            <Stat label="Geschikte collega’s" value={String(now.eligible_count)} sub="huidige actieve medewerkers met pas" />
-          </div>
-        ) : (
-          <p className="text-xs text-text-faint">Nog geen weken sinds lancering.</p>
-        )}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Stat label="Kortingen toegepast" value={String(k.uses_total)}
+                sub={`laatste 30 d: ${k.uses_30d}`} />
+          <Stat label="Collega’s die ze gebruikten" value={String(k.colleagues_total)}
+                sub={`laatste 30 d: ${k.colleagues_30d}`} />
+          <Stat label="Adoptie" value={pct(share(k.adopted_total, k.eligible_count))}
+                sub={`laatste 30 d: ${pct(share(k.adopted_30d, k.eligible_count))} · ${k.adopted_total} van ${k.eligible_count}`} />
+          <Stat label="Betaald door collega’s, totaal" value={eur(k.paid_total)}
+                sub={`laatste 30 d: ${eur(k.paid_30d)}`} />
+        </div>
+        <p className="text-[11px] text-text-faint -mt-2">Sinds lancering (11 sept); tweede lijn = laatste 30 dagen.</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div>
@@ -157,7 +169,7 @@ function ViolationsSection({ data }: { data: StaffDiscountData }) {
   const n = data.violations.length
   return (
     <Card className={cn(n > 0 && 'border-danger/50')}>
-      <CardHeader><CardTitle>2 · Regelovertredingen · eigen vennootschap</CardTitle></CardHeader>
+      <CardHeader><CardTitle>3 · Regelovertredingen · eigen vennootschap</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         {n > 0 ? (
           <div className="rounded-md bg-danger/10 text-danger px-4 py-3 text-sm font-medium flex items-center gap-2">
@@ -196,7 +208,7 @@ function PerVenueSection({ data }: { data: StaffDiscountData }) {
   }
   return (
     <Card>
-      <CardHeader><CardTitle>3 · Per zaak</CardTitle></CardHeader>
+      <CardHeader><CardTitle>4 · Per zaak</CardTitle></CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -222,11 +234,13 @@ function PerVenueSection({ data }: { data: StaffDiscountData }) {
                   <td className="py-1.5 px-2 text-right tabular-nums">{v.colleagues_total}</td>
                   <td className="py-1.5 px-2 text-right tabular-nums">{v.uses_30d}</td>
                   <td className="py-1.5 pl-3">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex gap-1 whitespace-nowrap">
                       {(homesByShop[v.shop_uuid] ?? []).map(h => (
-                        <Badge key={h.code} className="text-[10px] px-2">
-                          {employerName(h.code)} · {h.colleagues}
-                        </Badge>
+                        <span key={h.code} title={`${employerName(h.code)}: ${h.colleagues} collega(’s)`}>
+                          <Badge className="text-[10px] px-1.5 py-0 tabular-nums cursor-default">
+                            {h.code === 'unresolved' ? '?' : h.code} · {h.colleagues}
+                          </Badge>
+                        </span>
                       ))}
                     </div>
                   </td>
@@ -237,7 +251,7 @@ function PerVenueSection({ data }: { data: StaffDiscountData }) {
         </div>
         <p className="text-[11px] text-text-faint mt-2">
           Bezoeken = kortingsgebruiken sinds lancering. Gecombineerde Leat-winkels (bv. HasHotel + Bragoût) worden samen gerapporteerd;
-          Trivec geeft niet door aan welke van de twee zaken het ticket hoort.
+          Trivec geeft niet door aan welke van de twee zaken het ticket hoort. Badges = werkgeverscode · aantal collega’s (hover voor de naam).
         </p>
       </CardContent>
     </Card>

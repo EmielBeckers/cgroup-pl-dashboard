@@ -38,11 +38,11 @@ There is **no mock data** any more: the seed/refresh scripts and the nightly moc
 ## Staff discount (`/staff-discount`, board only)
 
 - **Data source:** a second, server-only source, the Supabase project **SDWorx** (`hjokwgquhanyipenzufe`), views `hr_sync.v_discount_*`. Those views are built by the repo **cgroup-employee-sync**, which syncs Leat transactions hourly.
-- **Access:** `lib/hr-db.ts` (`import 'server-only'`) connects with the `postgres` driver as the read-only role `discount_dashboard_ro`, which can SELECT those seven views only.
+- **Access:** `lib/hr-db.ts` (`import 'server-only'`) connects with the `postgres` driver as the read-only role `discount_dashboard_ro`, which can SELECT the `v_discount_*` views only.
   - The connection goes through the transaction pooler, with `prepare: false` and queries run **sequentially**, because parallel queries hang behind the pooler.
   - SDWorx doesn't know cgroup-pl users, so the board-only rule lives in the page and in `getStaffDiscountData()`.
 - **Never copy HR data into cgroup-pl.**
-- **Amounts:** the ticket is shown "as posted by Trivec". Whether it's before or after the 25% discount is unconfirmed, so no discount euros are calculated.
+- **Amounts:** `ticket_as_posted` is what the colleague **paid, after discount** (confirmed 2026-10-01), shown as "Betaald". Never derive gross or discount euros from it: drinks are charged at full price on the same ticket, so paid ÷ 0.75 is wrong. Trivec doesn't send the discount amount.
 
 ## Honest data rule
 

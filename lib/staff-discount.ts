@@ -3,9 +3,10 @@
 // lib/hr-db.ts (server-only). This file holds no data access and is safe to
 // import from client components.
 //
-// Honesty: ticket_as_posted is the amount Trivec posts to Leat. Whether it is
-// before or after the 25% discount is unconfirmed, so nothing here derives a
-// gross amount or a discount value from it.
+// Honesty: ticket_as_posted is what the colleague PAID, after the discount
+// (confirmed 2026-10-01), shown as "Betaald". Never derive a gross or discount
+// amount from it: drinks are charged at full price on the same ticket, and
+// Trivec does not send the discount amount.
 
 // SD Worx employer code -> vennootschap (as agreed 2026-10-01).
 export const EMPLOYER_NAMES: Record<string, string> = {
@@ -80,7 +81,32 @@ export interface CoverageRow {
   status: 'connected' | 'not connected' | 'no shop' | 'shop excluded'
 }
 
+export interface DiscountKpis {
+  uses_total: number
+  uses_30d: number
+  colleagues_total: number
+  colleagues_30d: number
+  paid_total: number | null
+  paid_30d: number | null
+  eligible_count: number
+  adopted_total: number         // currently eligible colleagues with ≥1 use
+  adopted_30d: number
+}
+
+export interface ColleagueRow {
+  contact_uuid: string
+  employee_name: string | null
+  home_employer_codes: string[] | null
+  uses: number
+  total_paid: number | null
+  uses_with_amount: number
+  first_use: string             // YYYY-MM-DD HH:MI, Europe/Brussels
+  last_use: string
+}
+
 export interface StaffDiscountData {
+  kpis: DiscountKpis
+  colleagues: ColleagueRow[]    // every colleague with ≥1 use, busiest first
   adoption: AdoptionRow[]
   violations: DiscountTx[]
   unresolvedUses: number        // uses whose own entity could not be determined

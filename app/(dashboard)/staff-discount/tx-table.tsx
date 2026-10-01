@@ -2,8 +2,8 @@ import type { DiscountTx } from '@/lib/staff-discount'
 import { employerName } from '@/lib/staff-discount'
 
 // Plain table (no hooks): usable from the server page and from the client
-// filter component alike. The amount column shows the ticket exactly as
-// Trivec posted it; it is never converted into a gross or discount amount.
+// filter component alike. "Betaald" = what the colleague paid after discount,
+// as Trivec posted it; never converted into a gross or discount amount.
 export function TxTable({ rows, empty }: { rows: DiscountTx[]; empty: string }) {
   if (rows.length === 0) return <p className="text-xs text-text-faint py-2">{empty}</p>
   return (
@@ -15,8 +15,8 @@ export function TxTable({ rows, empty }: { rows: DiscountTx[]; empty: string }) 
             <th className="py-2 pr-3 font-medium">Collega</th>
             <th className="py-2 pr-3 font-medium">Eigen vennootschap</th>
             <th className="py-2 pr-3 font-medium">Zaak</th>
-            <th className="py-2 pl-3 font-medium text-right" title="Bedrag zoals door Trivec gepost. Nog niet bevestigd of dit vóór of na de 25% korting is.">
-              Ticket zoals gepost*
+            <th className="py-2 pl-3 font-medium text-right" title="Wat de collega betaalde, na korting. Het kortingsbedrag wordt niet door Trivec doorgegeven.">
+              Betaald
             </th>
           </tr>
         </thead>
