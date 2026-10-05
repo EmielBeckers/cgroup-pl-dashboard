@@ -1,155 +1,63 @@
 # P&L Dashboard — Project Context
 
-Part of C.Group's internal tooling. See the master context file at `/Users/emielbeckers/Desktop/cgroup-ops/CLAUDE.md`.
+Part of C.Group's internal tooling. Master context: `/Users/emielbeckers/Desktop/cgroup-ops/CLAUDE.md`.
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16 (App Router), TypeScript, Tailwind 4 |
-| Database | Supabase (PostgreSQL + Auth + Storage) |
-| Hosting | Vercel (connects to GitHub, auto-deploys) |
-| Nightly refresh | GitHub Actions (`.github/workflows/nightly-refresh.yml`) |
+| Frontend | Next.js 16 (App Router), TypeScript, Tailwind 4. Read `node_modules/next/dist/docs/` before writing code (see AGENTS.md). |
+| Data | Supabase project **cgroup-pl** (`ezhdbjmiyuphoxiulpdz`): Postgres + Auth + Storage |
+| Hosting | Vercel (auto-deploys from GitHub). Emiel deploys; agents don't. |
 
-## Project structure
+There is **no mock data** any more: the seed/refresh scripts and the nightly mock workflow were removed (commit `200518e`). All figures come from live views.
 
-```
-app/
-  (dashboard)/              ← All authenticated pages share this layout
-    dashboard/              ← Main overview (all companies, current month)
-    companies/              ← Company list + [id] detail page (full USALI P&L)
-    venues/                 ← Venue list + [id] detail page (full USALI P&L)
-    invoices/               ← Invoice list
-      review/               ← AI review queue (accounting/board only)
-  api/
-    categorize-invoices/    ← POST endpoint: calls Claude Haiku to categorise pending_ai invoices
-  login/                    ← Public login page
-components/
-  ui/                       ← card, badge, button, kpi-card
-  layout/                   ← sidebar (with entity list), top-bar
-  charts/                   ← revenue-trend (AreaChart), pl-waterfall (BarChart)
-  pl/
-    pl-statement.tsx        ← Full USALI P&L table component (client, collapse/expand)
-lib/
-  supabase/client.ts        ← Browser client (client components)
-  supabase/server.ts        ← Server client (server components + middleware)
-  types.ts                  ← All TypeScript interfaces
-  utils.ts                  ← cn(), formatCurrency(), derivePl(), sumSnapshots(), monthLabel()
-  pl-structure.ts           ← PL_ROWS definition, USALI_EXPENSE_CATEGORIES, USALI_TO_COLUMN
-proxy.ts                    ← Auth guard: redirect to /login if not signed in
-scripts/
-  seed.ts                   ← One-time mock data loader (npm run seed)
-  refresh.ts                ← Nightly job (npm run refresh / GitHub Actions)
-supabase/
-  schema.sql                ← Run this once in Supabase SQL editor to create tables
-  migration_v2.sql          ← Run AFTER schema.sql to add USALI columns + AI invoice fields
-```
+## Where the data comes from
 
-## Setup steps (do these once)
+- Accounting data is loaded into cgroup-pl's `adsolut` schema by the separate repo **cgroup-adsolut-sync**.
+- The app reads role-gated wrapper views and RPCs in `public`:
+  - P&L: `pl_entity`, `pl_venue`, `pl_hotel`, `pl_month`, `pl_venue_month`, `pl_exclusions`, `pl_dossiers`, `pl_venues`
+  - Invoices: `invoices`, `invoices_summary()`, `pl_invoice_lines()` and the `pl_*_line_invoices()` drills
+  - Items: `items`, `item_prices`, `product_groups` and the `pg_*()` RPCs
+- `lib/pl-live.ts` only groups and sums rows the views return. It never derives amounts or classifies accounts.
+- `supabase/*.sql` are historical setup files, not a current schema dump.
 
-### 1. Supabase
+## Auth and access
 
-1. Create a new project at supabase.com
-2. Go to SQL Editor and paste + run the contents of `supabase/schema.sql`
-3. Go to Project Settings → API, copy:
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon / public key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - **service_role key** → `SUPABASE_SERVICE_KEY`
-4. Create your admin user: Authentication → Users → Invite user
-5. In SQL Editor, insert their profile:
-   ```sql
-   insert into user_profiles (id, role, full_name)
-   values ('<paste user UUID from Auth tab>', 'board', 'Your Name');
-   ```
+- `lib/supabase/server.ts` (server components) and `proxy.ts` (the auth guard; Next 16's replacement for middleware) use `@supabase/ssr` with the **anon key and the user's session**. `lib/supabase/client.ts` is browser-only and used just for sign-out.
+- Roles live in `public.user_profiles.role`: `board` | `accounting` | `manager`.
+  - Access is enforced in the database (RLS / role-gated views).
+  - Each page also checks the role server-side and redirects.
+  - The sidebar hides links using the same rule.
+- No service key is used at runtime. `SUPABASE_SERVICE_KEY` is only read by the build-time honesty check.
 
-### 2. Seed mock data
+## Routes (`app/(dashboard)/`)
 
-```bash
-cp .env.local.example .env.local
-# Fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY
-npm run seed
-```
+`/group` (group P&L; `/` and `/dashboard` redirect here) · `/entity/[dossier]` · `/entity/[dossier]/venue/[venue]` · `/compare` · `/invoices` · `/items` · `/leveranciers` · `/staff-discount` (board only) · `/api/invoice-pdf` (signed URL, board/accounting only).
 
-This loads 17 months (Jan 2024 – May 2025) of realistic P&L data.
+## Staff discount (`/staff-discount`, board only)
 
-### 3. Run locally
+- **Data source:** a second, server-only source, the Supabase project **SDWorx** (`hjokwgquhanyipenzufe`), views `hr_sync.v_discount_*`. Those views are built by the repo **cgroup-employee-sync**, which syncs Leat transactions hourly.
+- **Access:** `lib/hr-db.ts` (`import 'server-only'`) connects with the `postgres` driver as the read-only role `discount_dashboard_ro`, which can SELECT the `v_discount_*` views only.
+  - The connection goes through the transaction pooler, with `prepare: false` and queries run **sequentially**, because parallel queries hang behind the pooler.
+  - SDWorx doesn't know cgroup-pl users, so the board-only rule lives in the page and in `getStaffDiscountData()`.
+- **Never copy HR data into cgroup-pl.**
+- **Amounts:** `ticket_as_posted` is what the colleague **paid, after discount** (confirmed 2026-10-01), shown as "Betaald". Never derive gross or discount euros from it: drinks are charged at full price on the same ticket, so paid ÷ 0.75 is wrong. Trivec doesn't send the discount amount.
 
-```bash
-npm run dev
-# Open http://localhost:3000 → redirects to /login
-```
+## Honest data rule
 
-### 4. Deploy to Vercel
+`npm run build` runs `scripts/check-honesty.mjs` first.
+- It fails on any amount × ratio literal in `lib/`, `components/` or `app/`.
+- It fails on `line`/`section` rows in `PL_ROWS`.
+- When credentials are present, it fails on ratio literals in cgroup-pl view definitions.
+- Every displayed split must trace to source data. If a metric isn't supported by the data, say so on screen; never show a placeholder.
 
-1. Push this folder to a private GitHub repository
-2. Go to vercel.com → Add New Project → import the repo
-3. In Vercel project settings → Environment Variables, add:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_KEY`
-4. Deploy — takes ~2 minutes
+## Environment variables
 
-### 5. Set up nightly refresh (GitHub Actions)
+| Name | Where | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel + `.env.local` | cgroup-pl, user-session client |
+| `SUPABASE_SERVICE_KEY` | build only (optional) | honesty check's DB rule |
+| `SDWORX_DISCOUNT_DB_URL` | Vercel + `.env.local`, **server only** | SDWorx pooler URL for `discount_dashboard_ro` (user `discount_dashboard_ro.hjokwgquhanyipenzufe`, port 6543). Rotate: `ALTER ROLE` with a new SCRAM verifier, then update this var in Vercel. |
 
-1. In GitHub repo → Settings → Secrets and variables → Actions, add:
-   - `SUPABASE_URL` = your Supabase project URL
-   - `SUPABASE_SERVICE_KEY` = your service role key
-2. The job runs automatically every night at 02:00 Brussels time
-3. You can also trigger it manually: Actions tab → Nightly P&L Refresh → Run workflow
-
-## Venue → company mapping
-
-This is our best estimate based on company names. **Confirm with Emiel and update `scripts/seed.ts` if wrong.**
-
-| Company | Venues |
-|---|---|
-| HasHotel | HASHOTEL, BRAGOÛT |
-| Century | THE CENTURY |
-| Mia Mensa | MIA MENSA |
-| C. Corda | HET CORDAAT, CORDA.BAR, CORDA.CUISINE |
-| Green Valley Hospitality | ODIEL BISTRONOMIE, ATELIER V, TRENTANOVE, MAISON MATHIS, TERLAND, VANHARTE, DE COMMANDEUR |
-| Blue Ocean Hospitality | C.BAR, BAR BOUFFE JESSA, BAR BOUFFE ZOL, BAR BOUFFE ST-BARBARA, BAR BOUFFE ZMK, BAR BOUFFE TRUDO, THE ALLEY'S |
-| C. Outdoor | PLAGE ODETTE |
-| C.Group, C. Construx, R&R FIN, Customizze | No F&B venues (holding/support entities) |
-
-## AI invoice categorisation
-
-- Model: `claude-haiku-4-5-20251001`
-- New invoices are seeded with `review_status = 'pending_ai'`
-- `POST /api/categorize-invoices` processes them in batches of 10
-- Confidence ≥ 90%: auto-confirmed (`review_status = 'auto_confirmed'`)
-- Confidence < 90%: goes to accounting queue (`review_status = 'pending_review'`)
-- Accounting/board can accept or correct at `/invoices/review`
-- Nightly refresh calls the endpoint automatically if `ANTHROPIC_API_KEY` is set
-- Required secrets for GitHub Actions: `ANTHROPIC_API_KEY`, `SITE_URL`
-
-## Database migrations
-
-1. Run `supabase/schema.sql` first (creates all tables)
-2. Run `supabase/migration_v2.sql` to add USALI columns and AI invoice fields
-
-## When Adsolut API goes live
-
-1. In `scripts/refresh.ts`, replace `generateMockMonth()` with a real Adsolut API call
-2. Refer to `../src/fetch_accounting.py` for the existing OAuth flow
-3. Change `data_source: 'mock'` to `data_source: 'adsolut_live'`
-4. Test with one company first (HasHotel is the pilot)
-5. Roll out to remaining companies
-
-## Adding users
-
-In Supabase dashboard:
-1. Authentication → Users → Invite user (enter their email)
-2. They receive a password setup email
-3. After they accept, go to SQL Editor and run:
-   ```sql
-   -- For board/accounting:
-   insert into user_profiles (id, role, full_name)
-   values ('<uuid>', 'accounting', 'Naam Achternaam');
-
-   -- For a manager (only sees their venues):
-   insert into user_profiles (id, role, full_name, venue_ids)
-   values ('<uuid>', 'manager', 'Naam Achternaam',
-     array['<venue-uuid-1>', '<venue-uuid-2>']::uuid[]);
-   ```
-4. Find venue UUIDs: `select id, name from venues order by name;`
+`.env*` files are git-ignored.
