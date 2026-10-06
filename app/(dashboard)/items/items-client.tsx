@@ -23,6 +23,7 @@ const SERIES_COLORS = ['#b8962e', '#c2410c', '#16a34a', '#2563eb', '#7c3aed', '#
 
 interface ItemRow {
   item_key: string; supplier_vat: string | null; supplier_name: string | null
+  seller_item_id: string | null
   description: string | null; n_purchases: number; n_days: number
   first_date: string | null; last_date: string | null; n_units: number
   unit_norm_sample: string | null; last_unit_price: number | null
@@ -335,7 +336,7 @@ function GroupCard({ group, members, itemsByKey, onAdd, onRemove, refresh }: {
     .map(m => {
       const it = itemsByKey.get(m.item_key)
       return {
-        name: `${it?.supplier_name ?? '?'} — ${(it?.description ?? m.item_key).slice(0, 32)}`,
+        name: `${it?.supplier_name ?? '?'} — ${(it?.description ?? m.item_key).slice(0, 32)}${it?.seller_item_id ? ` (art. ${it.seller_item_id})` : ''}`,
         points: prices.get(m.item_key)!.map(p => ({
           date: p.invoice_date,
           value: Number(p.unit_price) / Number(m.unit_factor),
@@ -377,7 +378,10 @@ function GroupCard({ group, members, itemsByKey, onAdd, onRemove, refresh }: {
                   const it = itemsByKey.get(m.item_key)
                   return (
                     <tr key={m.item_key} className="border-t border-border/40">
-                      <td className="py-1 pr-2 max-w-72 truncate text-text">{it?.description ?? m.item_key}</td>
+                      <td className="py-1 pr-2 max-w-72 truncate text-text">
+                        {it?.description ?? m.item_key}
+                        {it?.seller_item_id && <span className="ml-1 text-[10px] text-text-faint">art. {it.seller_item_id}</span>}
+                      </td>
                       <td className="py-1 pr-2 text-text-muted">{it?.supplier_name ?? '—'}</td>
                       <td className="py-1 pr-2 whitespace-nowrap">
                         <input
@@ -484,7 +488,10 @@ export function ItemsClient() {
     setRows(null)
     const supabase = createClient()
     let q = supabase.from('items').select('*', { count: 'exact' })
-    if (applied.search.trim()) q = q.ilike('description', `%${applied.search.trim()}%`)
+    if (applied.search.trim()) {
+      const s = applied.search.trim().replace(/[%,()]/g, '')
+      q = q.or(`description.ilike.%${s}%,seller_item_id.ilike.%${s}%`)
+    }
     if (applied.supplier.trim()) q = q.ilike('supplier_name', `%${applied.supplier.trim()}%`)
     q.order('n_purchases', { ascending: false }).order('item_key')
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
@@ -572,6 +579,7 @@ export function ItemsClient() {
                       <td className="px-4 py-1.5 max-w-96 truncate text-text">
                         {openItem === r.item_key ? <ChevronDown size={10} className="inline mr-1" /> : <ChevronRight size={10} className="inline mr-1" />}
                         {r.description}
+                        {r.seller_item_id && <span className="ml-1.5 text-[10px] text-text-faint">art. {r.seller_item_id}</span>}
                       </td>
                       <td className="px-3 py-1.5 max-w-56 truncate text-text-muted">{r.supplier_name ?? '—'}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{r.n_purchases}</td>
