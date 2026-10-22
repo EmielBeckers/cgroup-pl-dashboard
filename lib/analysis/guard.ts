@@ -28,11 +28,17 @@ export function guardSql(raw: string): { ok: true; sql: string } | { ok: false; 
   }
 
   // every FROM/JOIN target must be an allowlisted view/RPC, a subquery,
-  // or a CTE defined in the query itself
+  // or a CTE defined in the query itself. The FROM inside
+  // extract/substring/trim/overlay/position is SQL syntax, not a relation
+  // reference — neutralize it before scanning (gate-c run caught this).
+  const scanSql = sql.replace(
+    /\b(extract|substring|trim|overlay|position)\s*\(([^()]*)\bfrom\b/gi,
+    (_m, fn, inner) => `${fn}(${inner} `,
+  )
   const cteNames = new Set<string>()
   for (const m of sql.matchAll(/\b(\w+)\s+as\s*\(/gi)) cteNames.add(m[1].toLowerCase())
   const allowed = new Set<string>(ALLOWED_RELATIONS)
-  for (const m of sql.matchAll(/\b(?:from|join)\s+(?:public\.)?([a-z_][a-z0-9_.]*)/gi)) {
+  for (const m of scanSql.matchAll(/\b(?:from|join)\s+(?:public\.)?([a-z_][a-z0-9_.]*)/gi)) {
     const target = m[1].toLowerCase().replace(/^public\./, '')
     if (allowed.has(target) || cteNames.has(target)) continue
     if (target.includes('.')) {
