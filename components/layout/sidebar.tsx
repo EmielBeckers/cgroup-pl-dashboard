@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Building2, LogOut, ChevronDown, ChevronRight, Layers, ReceiptText, Package, ArrowLeftRight, BadgePercent } from 'lucide-react'
+import { Building2, LogOut, ChevronDown, ChevronRight, Layers, ReceiptText, Package, ArrowLeftRight, BadgePercent, MessagesSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { UserProfile } from '@/lib/types'
@@ -123,6 +123,15 @@ export function Sidebar({ profile, dossiers, venuesByDossier }: SidebarProps) {
           )}>
             <ArrowLeftRight size={15} />
             Vergelijk
+          </Link>
+        )}
+        {canSeePnl && (
+          <Link href="/analyse" className={cn(
+            'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+            pathname === '/analyse' ? 'bg-gold/10 text-gold font-medium' : 'text-text-muted hover:text-text hover:bg-surface-raised',
+          )}>
+            <MessagesSquare size={15} />
+            Vraag de cijfers
           </Link>
         )}
         {canSeeStaffDiscount && (
