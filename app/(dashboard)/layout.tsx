@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
+import { ChatLauncher } from '@/components/layout/chat-launcher'
 import { UserProfile } from '@/lib/types'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex-1 flex flex-col min-w-0">
         {children}
       </div>
+      <ChatLauncher enabled={profile?.role === 'board' || profile?.role === 'accounting'} />
     </div>
   )
 }

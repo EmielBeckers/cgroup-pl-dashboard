@@ -113,7 +113,8 @@ function QueryBlockView({ q, onPin }: { q: QueryBlock; onPin?: (q: QueryBlock) =
 
 /* ---------------------------------------------------------------- page */
 
-export function AnalyseClient() {
+export function AnalyseClient({ variant = 'page' }: { variant?: 'page' | 'drawer' } = {}) {
+  const isDrawer = variant === 'drawer'
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [pins, setPins] = useState<PinRow[]>([])
   const [activeConv, setActiveConv] = useState<string | null>(null)
@@ -218,8 +219,9 @@ export function AnalyseClient() {
   }
 
   return (
-    <main className="flex h-[calc(100vh-0px)] text-xs">
+    <main className={cn('flex text-xs', isDrawer ? 'h-full min-h-0' : 'h-[calc(100vh-0px)]')}>
       {/* sidebar: conversations + pins */}
+      {!isDrawer && (
       <aside className="hidden w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border/60 p-3 md:flex">
         <button onClick={() => { setActiveConv(null); setChat([]); setError(null) }}
           className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 text-text hover:border-gold">
@@ -250,11 +252,21 @@ export function AnalyseClient() {
           {pins.length === 0 && <p className="px-2 text-text-faint">Nog niets vastgezet.</p>}
         </div>
       </aside>
+      )}
 
       {/* chat pane */}
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-border/60 px-4 py-2.5">
-          <h1 className="text-sm font-semibold text-text">Vraag het de cijfers</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold text-text">Vraag het de cijfers</h1>
+            {isDrawer && (
+              <span className="ml-auto flex items-center gap-2 text-[11px]">
+                <button onClick={() => { setActiveConv(null); setChat([]); setError(null) }}
+                  className="flex items-center gap-1 text-text-faint hover:text-gold"><Plus size={11} />nieuw</button>
+                <a href="/analyse" className="text-text-faint hover:text-gold">volledige pagina</a>
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-text-faint">
             Analyse op de gevalideerde views — elke uitspraak toont zijn bronquery. Analyse, geen wijzigingen:
             schema- en mappingwerk blijft via Claude Code lopen. Artikel-/prijsdata dekt ±40% van de aankopen.
