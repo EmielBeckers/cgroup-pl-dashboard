@@ -64,13 +64,11 @@ export default async function StaffDiscountPage() {
           <ViolationsSection data={data} />
           <PerVenueSection data={data} />
           <Card>
-            <CardHeader><CardTitle>5 · Recente transacties · laatste 30 dagen</CardTitle></CardHeader>
+            <CardHeader><CardTitle>5 · Recente transacties</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <RecentTransactions rows={data.recent} />
-              <p className="text-[11px] text-text-faint">
-                Betaald = wat de collega betaalde, na korting. Het kortingsbedrag wordt niet door Trivec doorgegeven.
-                {data.recentNotCounted > 0 && <> {data.recentNotCounted} teruggedraaide of pre-launch registratie(s) in deze periode tellen niet mee.</>}
-              </p>
+              {/* period picker lives in the component; default stays last 30
+                  days (served with this page), wider windows fetch on demand */}
+              <RecentTransactions rows={data.recent} notCounted={data.recentNotCounted} />
             </CardContent>
           </Card>
           <WarningsSection data={data} />

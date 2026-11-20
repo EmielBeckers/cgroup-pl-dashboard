@@ -140,3 +140,47 @@ export async function getStaffDiscountData(profile: Pick<UserProfile, 'role'> | 
     }
   })
 }
+
+// Transactions for an arbitrary [from, to] window (both YYYY-MM-DD,
+// inclusive) — the period picker on the Recente-transacties section.
+// Same board-only rule, same read-only transaction discipline as above.
+// Capped at 5000 rows ("all time" stays bounded); `truncated` says so.
+export interface DiscountTxWindow {
+  rows: DiscountTx[]
+  notCounted: number
+  truncated: boolean
+}
+
+const TX_WINDOW_CAP = 5000
+
+export async function getDiscountTransactions(
+  profile: Pick<UserProfile, 'role'> | null, from: string, to: string,
+): Promise<DiscountTxWindow> {
+  if (profile?.role !== 'board') {
+    throw new Error('staff-discount data is board-only')
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('invalid date window')
+  }
+  return db().begin('isolation level repeatable read read only', async sql => {
+    const rows = await sql<DiscountTx[]>`
+      select uuid::text, to_char(created_at at time zone 'Europe/Brussels', 'YYYY-MM-DD HH24:MI') as local_time, use_date::text, employee_name,
+             home_employer_codes, venue_group, venue_employer_code,
+             ticket_as_posted::float8 as ticket_as_posted
+      from hr_sync.v_discount_transactions
+      where is_use and use_date >= ${from} and use_date <= ${to}
+      order by created_at desc
+      limit ${TX_WINDOW_CAP + 1}`
+    const notCounted = await sql<{ n: number }[]>`
+      select count(*)::int as n
+      from hr_sync.v_discount_transactions
+      where row_role in ('reversed_use', 'pre_launch_reward')
+        and use_date >= ${from} and use_date <= ${to}`
+    const truncated = rows.length > TX_WINDOW_CAP
+    return {
+      rows: truncated ? [...rows.slice(0, TX_WINDOW_CAP)] : [...rows],
+      notCounted: notCounted[0]?.n ?? 0,
+      truncated,
+    }
+  })
+}
